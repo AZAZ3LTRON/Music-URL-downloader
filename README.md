@@ -15,3 +15,5 @@ There are two files in this repo:
 Each file has comments to help out with understanding the process behind the program. 
 
 Thank you for support. I am currently working on a GUI version so stay updated, otherwise have fun with the program. 
+
+Small Note: If you experience any issues with the program, message, email for solutions 
