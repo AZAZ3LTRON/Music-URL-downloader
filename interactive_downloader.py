@@ -21,18 +21,14 @@ import sys
 import os # For directory creation
 import subprocess # To run the spotdl in the background
 import shutil
-import importlib.util
 import time # Time 
 from pathlib import Path
 from datetime import datetime
 import logging # Logging
-from zipfile import ZipFile, ZIP_DEFLATED
 from packaging import version
 
 """ =========================================== Pre Config ===========================================
 This part of the pre-configuration of the downloader, it can be change. Each part is explained below:
-* TEMP_DOWNLOAD_DIRECTORY - Destination the tracks/albums/playlist stay before being moved to the final directory (subject to change)
-* FINAL_MUSIC_DIR - Final destination for downloaded files (subject to change)
 * SUCCESS_LOG - Logs the successful downloads (subject to change)
 * FAILED_LOG - Logs failed downloads (subject to change)
 * ERROR_LOG - Logs error in the download process (subject to change)
@@ -40,7 +36,6 @@ This part of the pre-configuration of the downloader, it can be change. Each par
 * RETRY_DELAY - The delay between each retry (subject to change)
 ======================================================================================================= """
 
-TEMP_DOWNLOAD_DIRECTORY = r"Temporary"
 SUCCESS_LOG = r"log\success.log" 
 FAILED_LOG = r"log\failed.log"
 ERROR_LOG = r"log\error.log"
@@ -49,8 +44,6 @@ RETRY_DELAY = 20
 
 
 os.makedirs("log", exist_ok=True)
-os.makedirs(TEMP_DOWNLOAD_DIRECTORY, exist_ok=True)
-
 """=========================================== Logger ===========================================
 Initialize the log fies before write
 """
@@ -87,7 +80,6 @@ logger.addHandler(errors_log)
 
 
 """ =========================================== The Downloader Class =========================================== """
-
 class Downloader:
     def __init__(self):
         """
