@@ -35,7 +35,7 @@ This part of the pre-configuration of the downloader, it can be change. Each par
 * MAX_RETRIES - No of times the downloader can retry on a link (subject to change)
 * RETRY_DELAY - The delay between each retry (subject to change)
 ======================================================================================================= """
-USER_CONSOLE = r"log.console.log"
+USER_CONSOLE = r"log\console.log"
 SUCCESS_LOG = r"log\successes.log" 
 FAILED_LOG = r"log\failure.log"
 ERROR_LOG = r"log\error.log"
@@ -56,7 +56,7 @@ console_logger = logging.getLogger("console")
 successful_downloads.setLevel(logging.INFO)
 failed_downloads.setLevel(logging.INFO)
 error_downloads.setLevel(logging.ERROR)
-console_logger.setLevel(logging.INFO, logging.ERROR)
+console_logger.setLevel(logging.INFO)
 
 # Disable propagation to avoid duplicate logging
 successful_downloads.propagate = False
@@ -95,7 +95,7 @@ console_logger.addHandler(console_file_handler)
 
 # Stream handler
 console_stream_handler = logging.StreamHandler()
-console_stream_handler.setLevel(logging.INFO, )
+console_stream_handler.setLevel(logging.INFO)
 console_stream_handler.setFormatter(log_format)
 console_logger.addHandler(console_stream_handler)
 
@@ -692,7 +692,7 @@ class Downloader:
             return False
 
     @staticmethod
-    def check_spotdl(self):
+    def check_spotdl():
         """
         Check if spotdl is installed and install it if not
         """
