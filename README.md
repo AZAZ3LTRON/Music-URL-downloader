@@ -1,4 +1,4 @@
-# Spotify Downloader Project
+# Spotify URL Downloader Project
 
 So I created this simple to use Spotify Downloader project to help people who wish to convert from Spotify due to their harmful policies or just like hoarding music like I do
 
@@ -9,7 +9,7 @@ However the downloader supports the highest version of the spotdl library (curre
 There are two files in this repo:
 - base_downloader : A basic downloader that downloads links in a text file. Simple and easy to understand.
 - interactive_downloader: Has more functionality than the base downloader, can work with or without a Spotify account
-- gui_downloader: Provides a User interface for the interactive downloader (done with QtPy5)
+- gui_downloader: Provides a User interface for the interactive downloader with Pyside6 (coming soon)
 - web_downloader: Connects downloader to the web using Flask (coming soon)
 
 Each file has comments to help out with understanding the process behind the program. 
