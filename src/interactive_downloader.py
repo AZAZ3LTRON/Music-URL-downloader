@@ -1,5 +1,5 @@
 """
-Interactive Spotify Playlist/Album/Track Downloader
+Interactive Playlist/Album/Track Downloader using SpotDL
 
 This is a simple to use downloader that can help in downloading albums/playlist/single tracks etc from Spotfiy
 With the rise of Artificial Intelligence and the music industry rallying to replace artist as well as Spotify 
