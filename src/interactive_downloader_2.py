@@ -173,20 +173,23 @@ class Youtube_Downloader:
           
         # Handles output template choice  
         while True:
-            print("Album (A), Track (T) or Playlist (P)")
-            output_template = input("What template do you wish to use:- ")
-            if not output_template:
-                self.__output_template = "{title}.{output-ext}"
+            print("Choose your output template format:- ")
+            print("  [A] Album: artist/album/track.ext")
+            print("  [T] Track: track.ext")
+            print("  [P] Playlist: playlist/track.ext")
+            
+            output_template = input("Choose (A/T/P, default T):- ")
+            if not output_template or output_template == 'T':
+                self.__output_template = "%(title)s.%(ext)s"
                 break
             if output_template in ['Album', 'A']:
-                self.__output_template = "{artist}/{album}/{title}.{output-ext}"
-                break
-            elif output_template in ['Track', 'T']:
-                self.__output_template = "{title}.{output-ext}"
+                self.__output_template = "%(artist)s/%(album)s/%(title)s.%(ext)s"
                 break
             elif output_template in ['Playlist', 'P']:
-                self.__output_template = "{playlist}/{title}.{output-ext}"
+                self.__output_template = "%(playlist)s/%(title)s.%(ext)s"
                 break
+            else:
+                print("Invalid choice. Please enter A, T or P")
         
         # Handle choice of output directory
         output_path = input("Enter output directory (default: Albums):- ").strip()
@@ -197,16 +200,19 @@ class Youtube_Downloader:
             
         self.__output_dir.mkdir(parents=True, exist_ok=True)
 
-    def validate_spotify_url(self, url: str) -> bool:
+    def validate_youtube_url(self, url: str) -> bool:
         """ Validate if the URL input is a proper URL"""
         
-        youtube_links_patterns = [
-            r'^https://music\.youtube\.com/(watch|playlist|channel|browse)/[A-Za-z0-9]+(\?.=_*)?$',
-            r'https://www\.youtube\.com/(watch|playlist|artist):[A-Za-z0-9]+$',
+        youtube_patterns = [
+            r'^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+$',
+            r'^(https?://)?music\.youtube\.com/.+$',
+            r'^(https?://)?youtube\.com/watch\?v=[\w-]+(&.*)?$',
+            r'^(https?://)?youtube\.com/playlist\?list=[\w-]+(&.*)?$',
+            r'^(https?://)?youtu\.be/[\w-]+$'        
         ]
 
-        for pattern in youtube_links_patterns:
-            if re.match(pattern, url):
+        for pattern in youtube_patterns:
+            if re.match(pattern, url, re.IGNORECASE):
                 try:
                     parsed = urllib.parse.urlparse(url)
                     if parsed.scheme in ['http', 'https', 'music', 'youtube']:
@@ -218,13 +224,14 @@ class Youtube_Downloader:
     def extract_youtube_id(self, url: str) -> str:
         """ Extract Youtube ID from URL """
         patterns = [
-            r'youtube\.com/(watch|playlist|channel|browse)/[A-Za-z0-9]+(\?.=_*)?$'           
+            r'(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]+)', # Video ID
+            r'youtube\.com/playlist\?list=([\w-]+)'          
         ]
         
         for pattern in patterns:
             match = re.search(pattern, url)
             if match:
-                return match.group(2)
+                return match.group(1)
         return None
 
     def run_download(self, url: str, output_dir: Path, additional_args=None):
@@ -234,64 +241,61 @@ class Youtube_Downloader:
             "-x",
             "--audio-format", self.__audio_format,
             "--audio-quality", self.__audio_quality,
-            "--output", output_dir,
-            "--paths" "output_dir"
-            "--overwrite", "skip",
+            "-o", str(output_dir / self.__output_template),
+            url,
+            "--no-overwrites" # Skip if file exists
+            "--no-playlist", # Download only single video if URL is playlist
+            "--add-metadata", # Add metadata
+            "--embed-thumbnail", # Embed thumbnail if available
+            "--"
         ]
         
         if additional_args:
-            command.extend(additional_args)
+            if isinstance(additional_args, list):
+                command.extend(additional_args)
+            else:
+                command.append(additional_args)
         
         try:
             result = subprocess.run(
                 command,
-                stdout=sys.stdout,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
+                timeout=DOWNLOAD_TIMEOUT,
                 check=True
             )
             
-            self.log_error(f"Command output: {result.stdout[:500]}")
-            if result.stderr:
-                self.log_error(f"Command errors: {result.stderr[:500]}")
+            if result.stdout:
+                self.log_success(f"Output: {result.stdout[:200]}")
             return result
         
         except subprocess.CalledProcessError as e:
             stderr = e.stderr or ""
                 # Error Handling for specific errors during download process ----------------------------
             # ----- NON - RETRYABLE ERRORS -------------------
-            if "TypeError: expected string or bytes-like object, got 'NoneType'" in stderr:
-                self.log_error(f"{url} - Metadata TypeError (NoneType)")
-                # Mark as non-retryable by returning a special object
+            if "This video is unavailable" or "Privae video" in stderr:
+                self.log_failure(f"{url} - Video unavailable")
                 return type('obj', (object,), {
-                    'returncode': 100,  # Custom return code for non-retryable
+                    'returncode': 404,  # Custom return code for non-retryable
                     'stdout': e.stdout,
                     'stderr': stderr
                 })()
             
-            if "LookupError: No results found for song:" in stderr:
-                self.log_error(f"{url} - No results found")
-                # Mark as non-retryable
+            elif "Sign in to confirm your age" in stderr:
+                self.log_failure(f"{url} - Age restriction")
                 return type('obj', (object,), {
-                    'returncode': 101,  # Custom return code for no results
+                    'returncode': 402,  
                     'stdout': e.stdout,
                     'stderr': stderr
                 })()
-
-            # ------- RETRYABLE ERRORS -----------
-            if "AudioProviderError" in stderr:
-                self.log_error(f"{url} - YT-DLP audio provider error")
-                # This will be retried normally since we raise the exception
-            # -------------------------------------------------------------
-            
-            # For other errors, log and return the exception
-            self.log_failure(f"Command failed for {url}: {e}")
-            return e
+            else:
+                self.log_error(f"Command failed for {url}: {stderr[:500]}")
+                raise
 
         except subprocess.TimeoutExpired:
             self.log_error(f"Download timeout for {url}")
             return type('obj', (object,), {
-                'returncode': 102, # Timeout
+                'returncode': 400, # Timeout
                 'stdout': '',
                 'stderr': 'Download timeout'        
             })()
@@ -317,6 +321,40 @@ class Youtube_Downloader:
             return wrapper
         return decorator
 
+    # Download Functions
+    def download_single(self, url):
+        """Download a single URL"""
+        if not self.validate_youtube_url(url):
+            self.log_failure(f"Invalid URL: {url}")
+            return False
+        
+        for attempt in range(self.__max_retries):
+            try:
+                console_logger.info(f"Attempt {attempt + 1}/{self.__max_retries} for {url}")
+                result = self.run_download(url, self.__output_dir)
+                
+                if hasattr(result, 'returncode'):
+                    if result.returncode == 0:
+                        self.log_success(f"Successfully downloaded: {url}")
+                        return True
+                    elif result.returncode in [404, 403, 408]:  # Non-retryable errors
+                        self.log_failure(f"Non-retryable error for {url}")
+                        return False
+                
+                # If we get here, it was successful
+                self.log_success(f"Successfully downloaded: {url}")
+                return True
+                
+            except Exception as e:
+                self.log_error(f"Attempt {attempt + 1} failed for {url}: {str(e)[:100]}")
+                if attempt < self.__max_retries - 1:
+                    console_logger.info(f"Retrying in {self.__retry_delay} seconds...")
+                    time.sleep(self.__retry_delay)
+                else:
+                    self.log_failure(f"Failed after {self.__max_retries} attempts: {url}")
+                    return False
+        
+        return False
 
     def check_ytdlp(self):
         """Check if yt-dlp is installed"""
