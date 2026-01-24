@@ -1,0 +1,7 @@
+YT-DLP - 2026-01-24 17:00:34,605 - INFO - log_success - yt-dlp found | version: 2025.12.08
+YT-DLP - 2026-01-24 17:00:58,371 - INFO - log_success - Preferences set: Format=mp3, Quality=320k, Template=%(title)s.%(ext)s, Output=Albums
+YT-DLP - 2026-01-24 17:01:34,363 - INFO - log_success - Successfully downloaded: https://music.youtube.com/watch?v=wQiz17AKhjM
+YT-DLP - 2026-01-24 17:13:28,228 - INFO - log_success - yt-dlp founded| version: 2025.12.08
+YT-DLP - 2026-01-24 17:14:44,399 - INFO - log_success - yt-dlp found | version: 2025.12.08
+YT-DLP - 2026-01-24 17:14:48,211 - INFO - log_success - Preferences set: Format=mp3, Quality=320k, Template=%(title)s.%(ext)s, Output=Albums
+YT-DLP - 2026-01-24 17:15:16,846 - INFO - log_success - Successfully downloaded: https://music.youtube.com/watch?v=B_HSa1dEL9s
