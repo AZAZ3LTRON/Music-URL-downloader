@@ -440,7 +440,6 @@ class Youtube_Downloader:
             print("No URL provided")
             return False
 
-        # Validate URL
         if not self.validate_youtube_url(url):
             print("Invalid YouTube URL. Please enter a valid YouTube/YouTube Music URL")
             return False
@@ -849,12 +848,10 @@ def main():
     print("="*50)
     print("Initializing YouTube/YouTube Music Downloader...")
     
-    # Create necessary directories
     os.makedirs("log", exist_ok=True)
     os.makedirs("Albums", exist_ok=True)
     os.makedirs("links", exist_ok=True)
     
-    # Check yt-dlp installation
     if not Youtube_Downloader.check_ytdlp():
         print("="*50)
         print("\nFailed to install yt-dlp. Please install it manually using:")
@@ -870,6 +867,13 @@ def main():
         print("="*50)
         choice = input("\nEnter your choice (1-10): ").strip()
         
+        # FIX 1: Handle exit first
+        if choice == "10":
+            print("\n" + "="*50)
+            print("Thank you for using YouTube Downloader. Goodbye!")
+            print("="*50)
+            break
+
         actions = {
             "1": downloader.download_track,
             "2": downloader.download_album,
@@ -882,27 +886,25 @@ def main():
             "9": Youtube_Downloader.program_info,
         }
         
-        if choice == "10":
-            print("\nThank you for using YouTube Downloader. Goodbye!")
-            print("="*50)
-            break
-        
         action = actions.get(choice)
         if action:
-            action()
+            try:
+                action()
+            except Exception as e:
+                print(f"\nAn error occurred during the operation: {e}")
+                print("Check the error log for details.")
         else:
             print("="*50)
             print("Invalid choice. Please enter a number between 1 and 10.")
             continue
         
-        # Ask if user wants to continue (except for help/info actions)
-        if choice not in ["8", "9"]:
-            cont = input("\nDo you want to perform another operation? (y/n): ").strip().lower()
-            if cont not in ['y', 'yes']:
-                print("="*50)
-                print("\nThank you for using YouTube Downloader. Goodbye!")
-                break
-
+        print("\n" + "="*50)
+        cont = input("Return to main menu? (y/n): ").strip().lower()
+        if cont not in ['y', 'yes', '']:
+            print("="*50)
+            print("\nThank you for using YouTube Downloader. Goodbye!")
+            break
+        
 if __name__ == "__main__":
     try:
         main()
