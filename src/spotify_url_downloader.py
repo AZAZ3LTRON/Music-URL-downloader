@@ -109,6 +109,9 @@ console_logger.addHandler(console_stream_handler)
 
 """ =========================================== The Downloader Class =========================================== """
 class Spotify_Downloader:
+    
+    # ==================================== Configuration ===================================
+
     def __init__(self):
         """
         Initialize the downloader with default values
@@ -175,8 +178,9 @@ class Spotify_Downloader:
                 
         except Exception as e:
             self.log_error(f"Error saving configuration: {e}")
+
+    # ==================================== Logger Functions ===================================
             
-    # Logger Functions -----------------------------------------------------------------
     def log_success(self, message: str):
         """Logs only successful downloads (to success log)"""
         success_downloads.info(message)
@@ -196,7 +200,7 @@ class Spotify_Downloader:
         """Log warning messages"""
         console_logger.warning(message)
      
-    # Preference getters & helper functions ------------------------------------------------        
+    # ==================================== Preference & Other Helpers ===================================
     def get_user_preferences(self):
         """ Takes in user input for the download settings """
         
@@ -284,7 +288,6 @@ class Spotify_Downloader:
 
     def validate_resource(self, url: str, skip_cache: bool = False) -> Tuple[bool, str, Optional[Dict]]:
         """ Validate if a resource is available before downloading to the device """
-        
         print(f"Validating resource: {url}")
         
         try:
@@ -419,12 +422,12 @@ class Spotify_Downloader:
         """Parse size string to bytes"""
         return self.parse_size(size_str)
     
+    # ==================================== The Download Function ===================================
     def run_download(self, url: str, output_template: str, additional_args=None):
         """ Run spotdl download with modern syntax """
         command = [
             "spotdl",
-            "download",
-            url,
+            "download", url,
             "--output", output_template,
             "--overwrite", "skip",
             "--bitrate", self.__audio_quality,
@@ -436,11 +439,9 @@ class Spotify_Downloader:
         
         try:
             print(f"Executing: {' '.join(command)}")
-            
-            # Simple implementation without complex progress parsing
             result = subprocess.run(
                 command,
-                stdout=subprocess.PIPE,
+                stdout=sys.stdout,
                 stderr=subprocess.PIPE,
                 text=True,
                 timeout=DOWNLOAD_TIMEOUT
@@ -472,7 +473,6 @@ class Spotify_Downloader:
             self.log_error(f"Unexpected error in run_download: {e}")
             return None
 
-    # Extra functions to really on (incase of program failure) ----------------------------
     def rate_limit(calls_per_minute=60):
         """ Added rate limiter to avoid being blocked """
         def decorator(func):
@@ -489,7 +489,7 @@ class Spotify_Downloader:
             return wrapper
         return decorator
 
-    # Main download functions -----------------------------------------------------------
+    # ==================================== Main Download Functions ===================================
     @rate_limit(calls_per_minute=60)
     def download_track(self):
         """ Download a single track """
@@ -674,7 +674,7 @@ class Spotify_Downloader:
         is_available, message, metadata = self.validate_resource(url)
         
         if not is_available:
-            print(f"\n❌ Playlist unavailable: {message}")
+            print(f"\n Playlist unavailable: {message}")
             retry = input("Try to download anyway? (y/n): ").strip().lower()
             if retry not in ['y', 'yes']:
                 return False
@@ -957,7 +957,7 @@ class Spotify_Downloader:
                 print("==================================================================")                                
                 return False   
 
-    # Special download functions -------------------------------------------------------
+    # ==================================== Special Download Functions ===================================
     def download_user_playlist(self):
         """
         Download a user's playlist (requires authentication)
@@ -1149,7 +1149,8 @@ class Spotify_Downloader:
             self.log_error(f"Unexpected exception: {e}") 
             return False
 
-    # Spotdl helpers ----------------------------------------------------------------------------
+
+    # ====================================  Check Spotdl Functions ===================================
     @staticmethod
     def check_spotdl():
         """
@@ -1188,9 +1189,7 @@ class Spotify_Downloader:
     
     @staticmethod     
     def show_spotdl_help():
-        """
-        Display spotdl help
-        """
+        """ Display spotdl help """
         try:
             result = subprocess.run(
                 ["spotdl", "--help"],
