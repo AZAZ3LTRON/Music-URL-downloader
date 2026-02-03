@@ -1,1 +1,5 @@
 2026-01-27 13:39:22,873 - INFO - log_failure - Failed to download after 3 attempts: https://music.youtube.com/watch?v=zbSjDVcZA2o
+2026-02-03 11:28:18,640 - INFO - log_failure - Download failed for https://music.youtube.com/watch?v=3dbRdzATXBE&si=CsybZ-7QyHXmLkq6 with code 1
+2026-02-03 11:28:33,041 - INFO - log_failure - Download failed for https://music.youtube.com/watch?v=3dbRdzATXBE&si=CsybZ-7QyHXmLkq6 with code 1
+2026-02-03 11:28:47,437 - INFO - log_failure - Download failed for https://music.youtube.com/watch?v=3dbRdzATXBE&si=CsybZ-7QyHXmLkq6 with code 1
+2026-02-03 11:28:47,438 - INFO - log_failure - Failed to download after 3 attempts: https://music.youtube.com/watch?v=3dbRdzATXBE&si=CsybZ-7QyHXmLkq6

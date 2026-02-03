@@ -39,7 +39,6 @@ import urllib.parse
 
 # Improved
 from typing import List, Dict, Optional, Tuple
-import threading
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 import queue
