@@ -44,8 +44,6 @@ import json
 from tqdm import tqdm
 import browser_cookie3
 from functools import wraps
-from colorama import init, Fore, Back, Style
-
 
 """ =========================================== Pre Config ===========================================
 This part of the pre-configuration of the downloader, it can be change. Each part is explained below:
@@ -120,6 +118,7 @@ class CookieManager:
     """ Manages cookies for Youtube authentication"""
     def __init__(self):
         self.cookie_directory = Path(COOKIE_DIRECTORY)
+        self.cookie_directory.mkdir(exist_ok=True)
         self.current_cookie_file = None
         self.cookie_sources = {
             'chrome': browser_cookie3.chrome,
@@ -211,6 +210,11 @@ class CookieManager:
         
         except Exception as e:
             print(f" Failed to extract cookies from {browser_name}: {e}")
+            print(f"Direct cookie extraction failed for {browser_name}")
+            print("Try manual cookie export:")
+            print("1. Install 'Get cookies.txt' extension for Chrome/Edge")
+            print("2. Export cookies from youtube.com")
+            print("3. Load the exported file using option 4")           
             return None
         
     def load_cookies(self, cookie_file: str) -> Optional[Path]:
@@ -264,7 +268,7 @@ class CookieManager:
     
     def list_cookies(self) -> List[Path]:
         """List all saved cookie files"""
-        cookie_files = list(self.cookie_directory.glob("* .txt"))
+        cookie_files = list(self.cookie_directory.glob("*.txt"))
         
         if not cookie_files:
             print(f" No saved cookies files found.")
@@ -416,6 +420,12 @@ class Youtube_Downloader:
     """ Downloader Class that handles the downloading process"""
     def __init__(self):
         """ Initialize the downloader with default values """
+        if 'MAX_RETRIES' not in globals():
+            global MAX_RETRIES, RETRY_DELAY, DOWNLOAD_TIMEOUT
+            MAX_RETRIES = 3
+            RETRY_DELAY = 5
+            DOWNLOAD_TIMEOUT = 300
+        
         self.__output_directory = Path("Albums")
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
@@ -1402,39 +1412,26 @@ class Youtube_Downloader:
     #  ============================================= Checkers & Yt-DLP Helpers =============================================
     @staticmethod
     def check_ytdlp():
-        """
-        Check if yt-dlp is installed (cache yt-dlp)
-        """
+        """ Check if yt-dlp is installed """
         if shutil.which("yt-dlp"):
             print("yt-dlp is already installed")
-            
-            # Check version
-            try:
-                result = subprocess.run(
-                    ["yt-dlp", "--version"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    check=True,
-                    timeout=10
-                )
-                if result.returncode == 0:
-                    version = result.stdout.strip()
-                    print(f"yt-dlp version: {version}")
-                    return True
-            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
-                print("Could not determine yt-dlp version")
-                return False
-        else:
-            print("yt-dlp not found. Installing...")
-            
-            try:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "yt-dlp"])
-                print("yt-dlp installed successfully")
+        # Check version
+        try:
+            result = subprocess.run(
+                ["yt-dlp", "--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                version = result.stdout.strip()
+                print(f"yt-dlp version: {version}")
                 return True
-            except subprocess.CalledProcessError as e:
-                print(f"Failed to install yt-dlp: {e}")
-                return False
+        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
+            print("Could not determine yt-dlp version")
+            return False
     
     @staticmethod
     def check_ffmpeg():
@@ -1482,6 +1479,22 @@ class Youtube_Downloader:
             print(f"Could not get yt-dlp help: {e}")
     
     @staticmethod
+    def check_dependecies():
+        "Check for missing dependencies"
+        missing_packages = []
+        for package in ['browser_cookie3' ,'colorama', 'tqdm', 'yt-dlp']:
+            try:
+                __import__(package)
+            except ImportError:
+                missing_packages.append(package)
+                
+        if missing_packages:
+            print(f"Missing packages: {', '.join(missing_packages)}")
+            print("Install with: pip install " + " ".join(missing_packages))
+            return False
+        return True
+    
+    @staticmethod
     def setup_dependencies():
         """Automatically install required libraries & dependencies"""
         dependencies = {
@@ -1499,7 +1512,7 @@ class Youtube_Downloader:
                 print(f"Installing {package_name}.... ")
                 subprocess.check_call([sys.executable, "-m", "pip", "install"] + packages)
                               
-    def troubleshooting(self):
+    def troubleshooting():
         """Troubleshooting"""
         print("\n" + "="*50)
         print("YT-DLP Troubleshooting")
@@ -1649,6 +1662,7 @@ def main():
     os.makedirs("log", exist_ok=True)
     os.makedirs("Albums", exist_ok=True)
     os.makedirs("links", exist_ok=True)
+    os.makedirs(COOKIE_DIRECTORY, exist_ok=True)
     
     if not Youtube_Downloader.check_ytdlp():
         print("="*50)
@@ -1683,9 +1697,7 @@ def main():
             "9": Youtube_Downloader.show_ytdlp_help,
             "10": Youtube_Downloader.check_ffmpeg,
             "11": Youtube_Downloader.program_info,
-            "12": lambda: downloader.troubleshooting(
-                input("Enter URL to troubleshoot: ").strip()
-            ) if input("Enter URL to troubleshoot: ").strip() else print("No URL provided")
+            "12": downloader.troubleshooting,
         }
         
         action = actions.get(choice)
