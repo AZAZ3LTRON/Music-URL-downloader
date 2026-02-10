@@ -116,9 +116,11 @@ console_stream_handler.setLevel(logging.INFO)
 console_stream_handler.setFormatter(log_format)
 console_logger.addHandler(console_stream_handler)
 
-
 class Enhanced_Menu:
     """ An enhanced menu system for better program interaction"""
+    
+    def __init__(self):
+        self.current_theme = 'default'
     
     # Predefined color combinations
     COLORS = {
@@ -141,7 +143,6 @@ class Enhanced_Menu:
         """Clear the terminal screen """
         os.system('cls' if os.name == 'nt' else 'clear')
     
-    @staticmethod
     def print_color(text, color_type='info', bold=False, end='\n'):
         """ Print colored text"""
         color_code = Enhanced_Menu.COLORS.get(color_type)
@@ -150,7 +151,6 @@ class Enhanced_Menu:
             
         print(f"{color_code}{text}{Style.RESET_ALL}", end=end)
 
-    @staticmethod
     def print_boxed_title(title, width=60):
         """Print a title in a decorative box"""
         border = "═" * (width - 2)
@@ -161,7 +161,6 @@ class Enhanced_Menu:
         print(f"{Enhanced_Menu.COLORS['title']}║{' ' * left_pad}{title}{' ' * right_pad}║")
         print(f"{Enhanced_Menu.COLORS['title']}╚{border}╝")
     
-    @staticmethod
     def print_header(title, subtitle=""):
         """Print a formatted header"""
         print()
@@ -170,14 +169,12 @@ class Enhanced_Menu:
             print(f"\n{Enhanced_Menu.COLORS['info']}{subtitle}")
         print()
     
-    @staticmethod
     def print_section(title, symbol="─"):
         """Print a section header"""
         print(f"\n{Enhanced_Menu.COLORS['section']}{symbol * 60}")
         print(f"  {title}")
         print(f"{symbol * 60}{Style.RESET_ALL}")
     
-    @staticmethod
     def print_menu_item(number, title, description="", indent=2):
         """Print a menu item with number and description"""
         indent_str = " " * indent
@@ -190,7 +187,6 @@ class Enhanced_Menu:
             for line in wrapped_desc:
                 print(f"{desc_indent}{Enhanced_Menu.COLORS['menu_desc']}{line}")
     
-    @staticmethod
     def wrap_text(text, width=50):
         """Wrap text to specified width"""
         words = text.split()
@@ -212,13 +208,12 @@ class Enhanced_Menu:
         
         return lines
     
-    @staticmethod
     def print_status(message, status_type="info", icon=""):
         """Print a status message with appropriate color and icon"""
         status_config = {
             "success": {"color": "success", "default_icon": "✓"},
-            "error": {"color": "error", "default_icon": "✗"},
-            "warning": {"color": "warning", "default_icon": "⚠"},
+            "failure": {"color": "failure", "default_icon": "✗"},
+            "error": {"color": "error", "default_icon": "⚠"},
             "info": {"color": "info", "default_icon": "ℹ"}
         }
         
@@ -227,19 +222,6 @@ class Enhanced_Menu:
         
         print(f"{Enhanced_Menu.COLORS[config['color']]}{icon_to_use} {message}")
     
-    @staticmethod
-    def print_progress_bar(iteration, total, prefix='', suffix='', length=40, fill='█'):
-        """Print a progress bar"""
-        percent = ("{0:.1f}").format(100 * (iteration / float(total)))
-        filled_length = int(length * iteration // total)
-        bar = fill * filled_length + '░' * (length - filled_length)
-        
-        print(f'\r{prefix} {Fore.CYAN}[{bar}]{Style.RESET_ALL} {percent}% {suffix}', end='\r')
-        
-        if iteration == total:
-            print()
-    
-    @staticmethod
     def get_input(prompt, input_type="int", min_val=None, max_val=None, default=None):
         """Get validated user input with colored prompt"""
         prompt_color = Enhanced_Menu.COLORS['input']
@@ -288,10 +270,8 @@ class Enhanced_Menu:
                 Enhanced_Menu.print_status(str(e), "error")
                 continue
             except KeyboardInterrupt:
-                Enhanced_Menu.print_status("Operation cancelled by user", "warning")
+                Enhanced_Menu.print_status("Operation cancelled by user", "error")
                 return None
-
-    
     
 class CookieManager:
     """ Manages cookies for Youtube authentication"""
@@ -311,7 +291,8 @@ class CookieManager:
         
     def get_status(self):
         """Get cookie status"""
-        print(f"\n Checking available browser cookies.... ")
+        Enhanced_Menu.print_header(f"\n Checking available browser cookies.... ")
+        
         available_browsers = []
         failed_browsers = []
         
@@ -321,27 +302,30 @@ class CookieManager:
                 cookies = cookie_func(domain_name="https://music.youtube.com/")
                 if cookies and len(list(cookies)) > 0:
                     available_browsers.append(browser)
-                    print(f"Cookies found ")
+                    Enhanced_Menu.print_color("Cookies found")
                 else:
-                    print("No cookies found")
+                    Enhanced_Menu.print_status("No cookies found", "failure")
             except Exception as e:
                 failed_browsers.append(browser)
-                print()
+                Enhanced_Menu.print_status(f"{browser}: Error - {e}", "failure")
                 
         if available_browsers:
-            return f" Available cookies from: {', '.join(available_browsers)}"
-        return "No browser cookies found for Youtube Music"  
+            Enhanced_Menu.print_status(f"Available cookies from {', '.join(available_browsers)}", "success")
+            return True
+        else:
+            Enhanced_Menu.print_status("No browser cookies found for Youtube Music", "error")
+            return 
 
     def extract_cookies(self, browser_name: str = 'brave') -> Optional[Path]:
         """Extract cookies from your browser of choice & saves to files"""
         if browser_name not in self.cookie_sources:
-            print(" Browser not supported")
-            print(f"Available browsers: {', '.join(self.cookie_sources.keys())}")
+            Enhanced_Menu.print_status("Browser not supported", "error")
+            Enhanced_Menu.print_status(f"Available browsers are: {', '.join(self.cookie_sources.keys())}", "info")
             return None
         
-        try:
-            print(f" Extract cookies from {browser_name}....")
+        Enhanced_Menu.print_header(f" Extracting cookies from {browser_name}....")
             
+        try:
             # Retrieve cookies from Youtube domains
             domains = ['youtube.com', 'music.youtube.com']
             all_cookies = []
@@ -352,11 +336,12 @@ class CookieManager:
                     for cookie in cookies:
                         if cookie not in all_cookies:
                             all_cookies.append(cookie)
+                    Enhanced_Menu.print_status(f"Found {len(list(cookies))} cookies for {domain}", "success")
                 except Exception as e:
-                    print(f" Couldn't get cookies for {domain}: {e}")
+                    Enhanced_Menu.print_status(f" Couldn't get cookies for {domain}: {e}", "error")
 
             if not all_cookies:
-                print(f" No cookies found for Youtube in {browser_name}")
+                Enhanced_Menu.print(f" No cookies found for Youtube in {browser_name}")
                 return None
             
             cookie_file = self.cookie_directory / f"{browser_name}_cookies.txt"
@@ -383,17 +368,19 @@ class CookieManager:
                     f.write(f"{cookie.name}\t")
                     f.write(f"{cookie.value}\n")
                     
-            print(f" Successfully extracted {len(all_cookies)} cookies to {cookie_file}")
+            Enhanced_Menu.print_status(f" Successfully extracted {len(all_cookies)} cookies to {cookie_file}", "success")
+            Enhanced_Menu.print_status(f"Cookies saved to: {cookie_file}", "info")
+            
             self.current_cookie_file = cookie_file
             return cookie_file
         
         except Exception as e:
-            print(f" Failed to extract cookies from {browser_name}: {e}")
-            print(f"Direct cookie extraction failed for {browser_name}")
-            print("Try manual cookie export:")
-            print("1. Install 'Get cookies.txt' extension for Chrome/Edge")
-            print("2. Export cookies from youtube.com")
-            print("3. Load the exported file using option 4")           
+            Enhanced_Menu.print_status(f" Failed to extract cookies from {browser_name}: {e}", "error")
+            Enhanced_Menu.print_color(f"Direct cookie extraction failed for {browser_name}")
+            Enhanced_Menu.print_color("Try manual cookie export:")
+            Enhanced_Menu.print_color("1. Install 'Get cookies.txt' extension for Chrome/Edge")
+            Enhanced_Menu.print_color("2. Export cookies from youtube.com")
+            Enhanced_Menu.print_color("3. Load the exported file using option 4")           
             return None
         
     def load_cookies(self, cookie_file: str) -> Optional[Path]:
@@ -407,27 +394,27 @@ class CookieManager:
             if not cookie_path.exists():
                 cookie_path = Path(cookie_file)
                 if not cookie_path.exists():
-                    print(f" Cookie file not found: {cookie_file}")
+                    Enhanced_Menu.print(f" Cookie file not found: {cookie_file}")
                     return None
         
         try:
             with open(cookie_path, 'r', encoding='utf-8') as f:
                 content = f.read(200)
                 if "# Netscape HTTP Cookie File" not in content:
-                    print(f" Warning: Cookie file may not be in Netscape format")
+                    Enhanced_Menu.print_status(f" Warning: Cookie file may not be in Netscape format", "errror")
             
             self.current_cookie_file = cookie_path
-            print(f" Cookies loaded from: {cookie_path}")
+            Enhanced_Menu.print_status(f"Cookies loaded from:- {cookie_path}", "info")
             return cookie_path
         
         except Exception as e:
-            print(f" Failed to load cookies: {e}")
+            Enhanced_Menu.print_status(f"Failed to load cookies:- {e}", "failure")
             return None
         
     def save_cookies(self, name: str = "cookies") -> List[Path]:
         """Save current cookie file to persistent storage"""
         if not self.current_cookie_file or not self.current_cookie_file.exists():
-            print(f" No active cookie file to save ")
+            Enhanced_Menu.print_status(f"No active cookie file to save", "error")
             return None
         
         try:
@@ -438,11 +425,11 @@ class CookieManager:
             # Copy the cookie file
             shutil.copy2(self.current_cookie_file, save_path)
             
-            print(f" Cookies saved to: {save_path}")
+            Enhanced_Menu.print_status(f"Cookies saved to: {save_path}", "success")
             return save_path
         
         except Exception as e:
-            print(f" Failed to save cookies: {e}")
+            Enhanced_Menu.print_status(f"Failed to save cookies: {e}", "error")
             return None 
     
     def list_cookies(self) -> List[Path]:
@@ -450,14 +437,15 @@ class CookieManager:
         cookie_files = list(self.cookie_directory.glob("*.txt"))
         
         if not cookie_files:
-            print(f" No saved cookies files found.")
+            Enhanced_Menu.print_status(f"No saved cookies files found.", "error")
             return []
         
-        print(f" Saved cookie files:")
+        Enhanced_Menu.print_status(f"Saved cookie files:", "info")
         for i, cookie_file in enumerate(cookie_files, 1):
             file_size = cookie_file.stat().st_size
             mod_time = time.strftime("%Y-%m-%d %H:%M", time.localtime(cookie_file.stat().st_mtime))
-            print(f"{i}. {cookie_file.name} ({file_size} bytes, {mod_time})")
+            print(f"{Fore.YELLOW}[{i}]{Style.RESET_ALL} {Fore.CYAN}{cookie_file.name:30}{Style.RESET_ALL}")
+            print(f"     Size: {file_size} bytes | Modified: {mod_time}")
             
         return cookie_files
 
@@ -468,19 +456,19 @@ class CookieManager:
             cookie_files = list(self.cookie_directory.glob("*.txt"))
             
             if not cookie_files:
-                print(f" No cookie files found in {self.cookie_directory}")
+                Enhanced_Menu.print(f" No cookie files found in {self.cookie_directory}")
                 return
             
-            print(f" Found {len(cookie_files)} cookie file(s) to delete:")
+            Enhanced_Menu.print(f" Found {len(cookie_files)} cookie file(s) to delete:-")
             
             # List files to be deleted
             for cookie_file in cookie_files:
-                print(f"  - {cookie_file.name}")
+                Enhanced_Menu.print(f"  - {cookie_file.name}")
             
             # Ask for confirmation
-            confirm = input(f"\nAre you sure you want to delete ALL {len(cookie_files)} cookie files? (y/n): ").strip().lower()
+            confirm = input(f"\nAre you sure you want to delete ALL {len(cookie_files)} cookie files? (y/n):- ").strip().lower()
             if confirm not in ['y', 'yes']:
-                print(" Cookie deletion cancelled.")
+                Enhanced_Menu.print_status("Cookie deletion cancelled.", "failure")
                 return
             
             # Delete the files
@@ -488,18 +476,18 @@ class CookieManager:
                 try:
                     cookie_file.unlink()
                     deleted_count += 1
-                    print(f" Deleted: {cookie_file.name}")
+                    Enhanced_Menu.print_status(f"Deleted: {cookie_file.name}", "success")
                 except Exception as e:
-                    print(f" Failed to delete {cookie_file.name}: {e}")
+                    Enhanced_Menu.print_status(f"Failed to delete {cookie_file.name}: {e}", "failure")
             
             # Clear current cookie file reference if it was deleted
             if self.current_cookie_file and not self.current_cookie_file.exists():
                 self.current_cookie_file = None
             
-            print(f"\n Successfully deleted {deleted_count} cookie file(s) from {self.cookie_directory}")
+            Enhanced_Menu.print_status(f"\nSuccessfully deleted {deleted_count} cookie file(s) from {self.cookie_directory}", "success")
             
         except Exception as e:
-            print(f" Error clearing cookies: {e}")
+            Enhanced_Menu.print_status(f"Error clearing cookies: {e}", "error")
 
     def get_arguments(self) -> List[str]:
         """Get yt-dlp cookie arguments if cookies are available"""
@@ -510,31 +498,42 @@ class CookieManager:
     def interactive_menu(self):
         """Interactive cookie setup menu"""
         while True:
-            print('='*50)
-            print("Cookie Manager Menu")
-            print('='*50)
-            print(" A simple program to help manager")
-            print("Choose:- ")       
-            print("1. Check available browser cookies")
-            print("2. Extract cookies from browser")
-            print("3. List saved cookie files")
-            print("4. Load cookies from file")
-            print("5. Save current cookies")
-            print("6. Clear all cookie files")
-            print("7. Show current cookie status")
-            print("8. Return to main menu")               
-
+            Enhanced_Menu.clear_screen()
+            
+            Enhanced_Menu.print_color('='*50)
+            Enhanced_Menu.print_header("Cookie Manager Menu")
+            Enhanced_Menu.print_color('='*50)
+            Enhanced_Menu.print_header("A simple program to help manager")
+            
+            Enhanced_Menu.print_section("Choices:- ")       
+            Enhanced_Menu.print_menu_item(1, "Check available browser for cookies")
+            Enhanced_Menu.print_menu_item(2, "Extract cookies from browser")
+            Enhanced_Menu.print_menu_item(3, "List saved cookie files")
+            Enhanced_Menu.print_menu_item(4, "Load cookies from file")
+            Enhanced_Menu.print_menu_item(5, "Save current cookies")
+            Enhanced_Menu.print_menu_item(6, "Clear all cookie files")
+            Enhanced_Menu.print_menu_item(7, "Show current cookie status")
+            Enhanced_Menu.print_menu_item(8, "Return to main menu")    
+            
+            Enhanced_Menu.print_section("STATUS")
+            if self.current_cookie_file:
+                Enhanced_Menu.print_status(f"You're active cookie files are: {self.current_cookie_file}", "success")
+            else:
+                Enhanced_Menu.print_status("You have no cookie files", "error")
+                       
             choice = input("Select option (1-8): ").strip()
             
             if choice == "1":
                 self.get_status()
+                input("\nPress Enter to continue... ")
                 
             elif choice == "2":
-                print("\nAvailable browsers:")
+                print(f"\n====={Fore.CYAN}Available Browsers:{Style.RESET_ALL}======")
+
                 for i, browser in enumerate(self.cookie_sources.keys(), 1):
-                    print(f"{i}. {browser}")
+                    Enhanced_Menu.print(f"{i}. {browser}")
                 
-                browser_choice = input("\nSelect browser (name or number): ").strip()
+                browser_choice = Enhanced_Menu.get_input("\nSelect browser (name or number): ", "str").strip()
                 
                 # Try to interpret as number
                 if browser_choice.isdigit():
@@ -547,9 +546,9 @@ class CookieManager:
                     
                 # Ask to save
                 if self.current_cookie_file:
-                    save = input("Save these cookies for future use? (y/n): ").strip().lower()
+                    save = Enhanced_Menu.get_input("Save these cookies for future use? (y/n):- ", "yn", default=True)
                     if save in ['y', 'yes']:
-                        name = input("Enter name for cookie file (optional): ").strip()
+                        name = Enhanced_Menu.get_input("Enter name for cookie file (optional):- ", "str").strip()
                         if not name:
                             name = "cookies"
                         self.save_cookies(name)
@@ -557,41 +556,45 @@ class CookieManager:
             elif choice == "3":
                 cookie_files = self.list_cookies()
                 if cookie_files:
-                    load_choice = input("\nEnter number to load cookie file (or press Enter to skip): ").strip()
+                    load_choice = Enhanced_Menu.get_input("\nEnter number to load cookie file (or press Enter to skip):- ", "str")
                     if load_choice.isdigit():
                         idx = int(load_choice) - 1
                         if 0 <= idx < len(cookie_files):
                             self.load_cookies(str(cookie_files[idx]))
+                input("\nPress Enter to continue...")
                 
             elif choice == "4":
-                cookie_file = input("Enter cookie filename or path: ").strip()
+                cookie_file = Enhanced_Menu.get_input("Enter cookie filename or path: ", "str").strip()
                 if cookie_file:
                     self.load_cookies(cookie_file)
+                input("\nPress Enter to continue... ")
                 
             elif choice == "5":
                 if self.current_cookie_file:
-                    name = input("Enter name for cookie file (optional): ").strip()
+                    name = Enhanced_Menu.get_input("Enter name for cookie file (optional): ", "str", default="cookies")
                     if not name:
                         name = "cookies"
                     self.save_cookies(name)
                 else:
-                    print(f"No active cookies to save")
+                    Enhanced_Menu.print(f"No active cookies to save")
+                input("\nPress Enter to continue...")
                 
             elif choice == "6":
                 self.clear_cookies()
+                input("\nPress Enter to continue")
                 
             elif choice == "7":
                 status = self.get_status()
                 if self.current_cookie_file:
-                    print(f"Active cookie file: {self.current_cookie_file.name}")
+                    Enhanced_Menu.print(f"Active cookie file: {self.current_cookie_file.name}")
                 else:
-                    print(f"No active cookie file")
+                    Enhanced_Menu.print(f"No active cookie file")
                 
             elif choice == "8":
                 break
                 
             else:
-                print(f"Invalid choice")
+                Enhanced_Menu.print(f"Invalid choice")
             
             input("\nPress Enter to continue...")                
                           
@@ -686,47 +689,72 @@ class Youtube_Downloader:
     def log_success(self, message: str):
         """Logs only successful downloads (to success log)"""
         success_downloads.info(message)
-        console_logger.info(f"{message}")
+        console_logger.info(f"{Fore.GREEN}{message}{Style.RESET_ALL}")
         
     def log_failure(self, message: str):
         """Logs only failed downloads (to failed log)"""
         failed_downloads.info(message)
-        console_logger.info(f"{message}")
-        
+        console_logger.info(f"{Fore.RED}{message}{Style.RESET_ALL}")
+                
     def log_error(self, message: str, exc_info=False):
         """Logs only error in download process (to error log)"""
         error_downloads.error(message, exc_info=exc_info)
-        console_logger.error(f"{message}")
-             
+        console_logger.info(f"{Fore.YELLOW}{message}{Style.RESET_ALL}")
+                     
     #  ============================================= Helper Functions & Resource Validation Functions =============================================
     def get_user_preferences(self):
         """Takes in user input for the download settings"""
+        Enhanced_Menu.print_header("DOWNLOAD SETTINGS", "Configure your music conversion preferenced")
+
         # Handle choice of bitrate/audio quality inputs
         while True:
-            audio_quality_input = input("What bitrate would you like (8k-320k, default: 320k):- ").strip().lower()
+            audio_quality_input = Enhanced_Menu.get_input("\nWhat bitrate would you like (enter 'choice' to see options):- ", "str", default=self.__audio_quality)
             
             if not audio_quality_input:
                 self.__audio_quality = "320k"
                 break
-            if audio_quality_input in ["auto", "disable", "8k", "16k", "24k", "32k", "40k", "48k", "64k",
-                                "80k", "96k", "112k", "128k", "160k", "192k", "224k", "256k", "320k"]:
-                self.__audio_quality = audio_quality_input
-                break
-            print("Invalid bitrate. The downloader support values the following values 8k, 16k, 24k, 32k, 40k, 48k, 64k, 80k, 96k, 112k, 128k, 160k ,192k, 224k and more.")
             
-        # Handles choice of audio format
+            if audio_quality_input == 'choice':
+                print(f"\n{Fore.CYAN}Available qualities:{Style.RESET_ALL}")
+                print("  auto     - Let yt-dlp choose the best")
+                print("  320k     - High quality (default)")
+                print("  256k     - Very good quality")
+                print("  192k     - Good quality")
+                print("  128k     - Standard quality")
+                print("  8k-160k  - Lower qualities")
+                
+            valid_bitrates = ["auto", "disable", "8k", "16k", "24k", "32k", "40k", "48k", "64k",
+                                "80k", "96k", "112k", "128k", "160k", "192k", "224k", "256k", "320k"]
+            
+            if audio_quality_input in valid_bitrates:
+                self.__audio_quality = audio_quality_input.lower()
+                break
+            Enhanced_Menu.print_status("Invalid bitrate. The downloader doesn't support these values", "error")
+            
+        # Handle choice of audio format
         while True:
-            audio_format_input = input("What format do you wish to download in (mp3, flac, ogg, opus, m4a, wav, default mp3):- ").strip().lower()
+            audio_format_input = Enhanced_Menu.get_input("\nWhat format would you like(enter 'choice' to see options):- ", "str", default=self.__audio_format)
+            
             if not audio_format_input:
                 self.__audio_format = "mp3"
                 break
+            
+            if audio_format_input == 'choice':
+                print(f"\n{Fore.CYAN}Available formats:{Style.RESET_ALL}")
+                print("  mp3  - Most compatible (default)")
+                print("  m4a  - Apple format, good quality")
+                print("  flac - Lossless audio")
+                print("  opus - Excellent compression")
+                print("  ogg  - Open format")
+                print("  wav  - Uncompressed")
+            
             if audio_format_input in ["mp3", "flac", "ogg", "opus", "m4a", "wav"]:
                 self.__audio_format = audio_format_input
                 break
-            print("Invalid format. Your poosible choice are:- mp3, flac, ogg, opus, m4a, wav.")
+            Enhanced_Menu.print("Invalid format. Downloader doesn't support this format")
             
         # Handle choice of output directory
-        output_path = input("Enter output directory (default: Albums):- ").strip()
+        output_path = Enhanced_Menu.get_input("Enter output directory (default: Albums):- ", "str", ).strip()
         if output_path:
             self.__output_directory = Path(output_path)
         else:
@@ -735,12 +763,17 @@ class Youtube_Downloader:
         self.__output_directory.mkdir(parents=True, exist_ok=True)  
 
         # Handles choice for cookies
-        print("\nCookie Settings:- ")
-        print("Cookies can help with age-restricted/region-restricted content.")
-        cookie_choice = input("Use cookies for authentication? (y/n, default n):- ").strip().lower()
+        Enhanced_Menu.print_status("\nCookie Settings", "info")
+        print(f"\n{Fore.CYAN}Cookies can help with:{Style.RESET_ALL}")
+        print("  Age-restricted content")
+        print("  Region-restricted videos")
+        print("  Private playlists")
+        
+        cookie_choice = Enhanced_Menu.get_input("Use cookies for authentication? (y/n):- ", "yn", default=True)
+        
         if cookie_choice in ['y', 'yes']:
             self.use_cookies = True
-            print("Note: Make sure you have used the Cookie Manager to extract the cookies beforehand, if not I recommend you to")
+            Enhanced_Menu.print("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Mnager to help you")
         else:
             self.use_cookies = False
         
@@ -813,7 +846,7 @@ class Youtube_Downloader:
         try:
             command = ["yt-dlp", 
                        "--skip-download",
-                       "--print-json",
+                       "--Enhanced_Menu.print-json",
                        "--no-warnings",
                        url]
             result = subprocess.run(
@@ -862,19 +895,9 @@ class Youtube_Downloader:
         
         size_str = size_str.strip().upper()
         units = {
-        'B': 1,
-        'K': 1024,
-        'M': 1024**2,
-        'G': 1024**3,
-        'T': 1024**4,
-        'KB': 1024,
-        'MB': 1024**2,
-        'GB': 1024**3,
-        'TB': 1024**4,
-        'KIB': 1024,
-        'MIB': 1024**2,
-        'GIB': 1024**3,
-        'TIB': 1024**4           
+        'B': 1,'K': 1024, 'M': 1024**2, 'G': 1024**3, 'T': 1024**4, # Bits
+        'KB': 1024, 'MB': 1024**2, 'GB': 1024**3, 'TB': 1024**4,
+        'KIB': 1024, 'MIB': 1024**2, 'GIB': 1024**3, 'TIB': 1024**4           
         }
         
         match = re.match(r'([\d\.]+)\s*(\w*)', size_str)
@@ -930,14 +953,14 @@ class Youtube_Downloader:
             cookie_args = self.cookie_manager.get_arguments()
             if cookie_args:
                 command.extend(cookie_args)
-                self.log_success(f"Using cookies from {self.cookie_manager.current_cookie_file}")
+                self.log_success(f"Using cookies from authentication")
+            self.log_error("Error using cookies")
             
         if additional_args:
             if isinstance(additional_args, list):
                 command.extend(additional_args)
             else:
-                command.append(additional_args)
-        
+                command.append(additional_args)  
         command.append(url)
         
         try:
@@ -974,7 +997,7 @@ class Youtube_Downloader:
                         percent_match = re.search(r'(\d+\.?\d*)%', line)
                         if percent_match:
                             percent = float(percent_match.group(1))
-                            progress_bar.set_description(f"Downloading: {percent:.1f}%")
+                            progress_bar.set_description(f"{Fore.CYAN}Downloading: {percent:.1f}%{Style.RESET_ALL}")
                         
                         # Parse total size
                         size_match = re.search(r'of\s+([\d\.]+\s*[KMGT]?i?B)', line)
@@ -1014,7 +1037,7 @@ class Youtube_Downloader:
                 if "100%" in line or "already been downloaded" in line or "[Merger]" in line:
                     if progress_bar.total and progress_bar.n < progress_bar.total:
                         progress_bar.n = progress_bar.total
-                    progress_bar.set_description("DOWNLOADED")
+                    progress_bar.set_description(f"{Fore.GREEN}Downloaded{Style.RESET_ALL}")
                     progress_bar.set_postfix_str("")
                     progress_bar.refresh()
                     break
@@ -1059,7 +1082,6 @@ class Youtube_Downloader:
                     error_msg += f" - Error: {error_output[:200]}"
                 
                 self.log_failure(error_msg)
-                
                 # Return the error
                 return subprocess.CalledProcessError(
                     process.returncode, 
@@ -1107,45 +1129,45 @@ class Youtube_Downloader:
     def download_track(self):
         """Download a single track"""
         while True:  # Add outer loop for URL input retry
-            print("\n" + "="*50)
-            print("Track Download")
-            print("="*50)
-            url = input("Enter YouTube/YouTube Music track URL (or 'back' to return to menu): ").strip()
-            
+            print("\n" + "="*55)
+            Enhanced_Menu.print_header("Download Track", "Single song download")
+            print("="*55)
+            url = Enhanced_Menu.get_input("Enter YouTube Music URL (or 'back' to return)", "str")
             if url.lower() == 'back':
                 return False
             
             if not url:
-                print(f"No URL provided")
+                Enhanced_Menu.print_status(f"No URL provided", "error")
                 continue  # Go back to asking for URL
             
             # Validate URL
             if not self.validate_youtube_url(url):
-                print("Invalid YouTube URL. Please enter a valid YouTube/YouTube Music URL")
+                Enhanced_Menu.print_status("Invalid YouTube URL. Enter a valid YouTube/YouTube Music URL", "error")
                 continue
             
             # Validate resource before downloading
-            print("Validating resource...")
+            Enhanced_Menu.print_status("Validating resource...", "info")
             is_valid, message, metadata = self.resource_validation(url)
             if not is_valid:
-                print(f"Resource validation failed: {message}")
+                Enhanced_Menu.print_status(f"Resource validation", "failed")
                 self.log_failure(f"Resource validation failed for {url}: {message}")
-                print("Please try a different URL. ")
+                Enhanced_Menu.print("Please try a different URL. ")
                 continue
             
-            print(f"Resource validated: {message}")
+            Enhanced_Menu.print(f"Resource validated successfully: {message}", "success")
             break
             
         # Get user preferences
-        self.get_user_preferences()
-        print("="*50)
+        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+            self.get_user_preferences()
+            
         print(f"Starting Track download: {url}. This may take a few minutes...")
         start_time = time.time()
         output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
             
         for attempt in range(1, MAX_RETRIES + 1):
             print(f"{'='*50}")
-            print(f"Downloading Track URL: Attempt {attempt} of {MAX_RETRIES}")
+            Enhanced_Menu.print_status(f"Download Track", "info")
             print(f"{'='*50}")
             
             # Add a small delay between retries
@@ -1158,11 +1180,11 @@ class Youtube_Downloader:
             # Check if download was successful as well as record time it took to complete download
             if isinstance(result, subprocess.CompletedProcess) and result.returncode == 0:
                 elapsed_time = time.time() - start_time
-                self.log_success(f"Successfully downloaded: {url} in {elapsed_time:.1f} seconds!")
+                self.log_success(f"Successfully downloaded track: {url}")
                 print("="*50)
                 
                 # Ask if user wants to download another track
-                another = input("Download another track? (y/n): ").strip().lower()
+                another = Enhanced_Menu.get_input("Download another track? (y/n): ", "yn")
                 if another in ['y', 'yes']:
                     continue  # Go back to URL input
                 else:
@@ -1170,7 +1192,7 @@ class Youtube_Downloader:
             
             # If we get here, there was an error
             elif attempt < MAX_RETRIES:
-                error_msg = f"Download failed (attempt {attempt}/{MAX_RETRIES})."
+                Enhanced_Menu.print_status(f"Download failed, retrying....", "error")
                 if result.stderr:
                     error_msg += f" Error: {result.stderr[:200]}"
                 self.log_error(error_msg)
@@ -1189,9 +1211,9 @@ class Youtube_Downloader:
         """Download an album"""
         while True:
             print("\n" + "="*50)
-            print("Album Download")
+            Enhanced_Menu.print_header("Album Download")
             print("="*50)
-            url = input("Enter YouTube Music album URL (or 'back' to return to menu):- ").strip()
+            url = Enhanced_Menu.get_input("Enter YouTube Music album URL (or 'back' to return to menu):- ", "str")
             
             if url.lower() == 'back':
                 return False
@@ -1206,19 +1228,21 @@ class Youtube_Downloader:
                 continue
             
             # Validate resource before downloading
-            print("Validating resource...")
+            Enhanced_Menu.print_status("Validating resource...", "info")
             is_valid, message, metadata = self.resource_validation(url)
             if not is_valid:
-                print(f"Resource validation failed: {message}")
+                Enhanced_Menu.print_status(f"Resource validation", "failed")
                 self.log_failure(f"Resource validation failed for {url}: {message}")
-                print(f"Please try a different URL")
+                Enhanced_Menu.print("Please try a different URL. ")
                 continue
             
             print(f"Resource validated: {message}")
             break
         
         # Get user preferences
-        self.get_user_preferences()
+        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+            self.get_user_preferences()
+            
         print("="*50)
         print(f"Starting Album download. This may take a few minutes...")
         start_time = time.time()
@@ -1226,7 +1250,7 @@ class Youtube_Downloader:
     
         for attempt in range(1, MAX_RETRIES + 1):
             print(f"{'='*50}")
-            print(f"Downloading Album URL: Attempt {attempt} of {MAX_RETRIES}")
+            Enhanced_Menu.print_status(f"Downloading Album", "info")
             print(f"{'='*50}")
             
             # Add a small delay between retries
@@ -1239,15 +1263,15 @@ class Youtube_Downloader:
             # Check if download was successful as well as record time it took to complete download
             if isinstance(result, subprocess.CompletedProcess) and result.returncode == 0:
                 elapsed_time = time.time() - start_time
-                self.log_success(f"Successfully downloaded album in {elapsed_time:.1f} seconds!")
+                self.log_success(f"Successfully downloaded album: {url}")
                 print("="*50)
                 
-                
+                # Ask if user wishes to download another album
                 another = input("Download another album? (y/n):- ").strip().lower()
                 if another in ['y', 'yes']:
-                    continue
+                    continue # Go back to URL input
                 else:
-                    return True
+                    return True # Return success but exit to menu
                             
             # If we get here, there was an error
             elif attempt < MAX_RETRIES:
@@ -1268,37 +1292,41 @@ class Youtube_Downloader:
     @rate_limit(calls_per_minute=30)
     def download_playlist(self):
         """Download a playlist"""
-        while True:
-            print("\n" + "="*50)
-            print("Playlist Download")
-            print("="*50)
-            url = input("Enter YouTube/YouTube Music playlist URL: ").strip()
+        while True:  # Added outer loop for URL input retry
+            print("\n" + "="*55)
+            Enhanced_Menu.print_header("Download Track", "Single song download")
+            print("="*55)
+            url = Enhanced_Menu.get_input("Enter YouTube Music URL (or 'back' to return)", "str")
+            if url.lower() == 'back':
+                return False
             
             if url.lower() == 'back':
                 return False
             
             if not url:
-                print("No URL provided")
+                Enhanced_Menu.print_status(f"No URL provided", "error")
                 continue
 
             if not self.validate_youtube_url(url):
-                print("Invalid YouTube URL. Please enter a valid YouTube/YouTube Music URL")
+                Enhanced_Menu.print_status("Invalid YouTube URL. Enter a valid YouTube/YouTube Music URL", "error")
                 return False
             
             # Validate resource before downloading
-            print("Validating resource...")
+            Enhanced_Menu.print_status("Validating resource...", "info")
             is_valid, message, metadata = self.resource_validation(url)
             if not is_valid:
-                print(f"Resource validation failed: {message}")
+                Enhanced_Menu.print_status(f"Resource validation", "failed")
                 self.log_failure(f"Resource validation failed for {url}: {message}")
-                print("Please try a different URL. ")
+                Enhanced_Menu.print("Please try a different URL. ")
                 continue
             
-            print(f"Resource validated: {message}")
+            Enhanced_Menu.print(f"Resource validated successfully: {message}", "success")
             break
         
         # Get user preferences
-        self.get_user_preferences()
+        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+            self.get_user_preferences()
+            
         print("="*50)
         print(f"Starting Playlist download. This may take a few minutes...")
         start_time = time.time()
@@ -1306,7 +1334,7 @@ class Youtube_Downloader:
         
         for attempt in range(1, MAX_RETRIES + 1):
             print(f"{'='*50}")
-            print(f"Downloading Playlist URL: Attempt {attempt} of {MAX_RETRIES}")
+            Enhanced_Menu.print_status(f"Downloading Playlist", "info")
             print(f"{'='*50}")
             
             # Add a small delay between retries
@@ -1319,14 +1347,15 @@ class Youtube_Downloader:
             # Check if download was successful as well as record time it took to complete download
             if isinstance(result, subprocess.CompletedProcess) and result.returncode == 0:
                 elapsed_time = time.time() - start_time
-                self.log_success(f"Successfully downloaded playlist in {elapsed_time:.1f} seconds!")
+                self.log_success(f"Successfully downloaded playlist {url}")
                 print("="*50)
             
-                another = input("Download another playlist (y/n):- ").strip().lower()
+                # Ask if user wants to download another track
+                another = Enhanced_Menu.get_input("Download another playlist? (y/n): ", "yn")
                 if another in ['y', 'yes']:
-                    continue
+                    continue  # Go back to URL input
                 else:
-                    return True
+                    return True  # Return success but exit to menu
                 
             # If we get here, there was an error
             elif attempt < MAX_RETRIES:
@@ -1346,14 +1375,17 @@ class Youtube_Downloader:
 
     def download_from_file(self):
         """Download various links from a file"""
-        filepath = input("Enter the directory of the file (default: links/youtube_links.txt): ").strip()
+        Enhanced_Menu.print_header("Batch Download", "Download from a text file containing links")
+        
+
+        filepath = Enhanced_Menu.get_input("Enter the directory of the file): ", "str", default=self.__filepath)
         
         if not filepath:
             filepath = self.__filepath
             
         if not os.path.exists(filepath):
             self.log_failure(f"File not found: {filepath}")
-            print(f"Please create a file named 'youtube_links.txt' in the 'links' folder.")
+            Enhanced_Menu.print_status(f"File not found: {filepath}", "error")
             return False
         
         self.get_user_preferences()
@@ -1372,6 +1404,8 @@ class Youtube_Downloader:
             self.log_failure("No URLs found in the text file")
             return False
         
+        Enhanced_Menu.print_status(f"Found {len(file_lines)} URLs to process", "info")
+
         success_count = 0  # How many urls downloaded successfully
         failed_count = 0  # How many urls failed to download
         
@@ -1407,12 +1441,10 @@ class Youtube_Downloader:
                 output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
                 additional_args = None
             
-            success = False
-            non_retry_error = False
-            
+            success = False            
             for attempt in range(1, MAX_RETRIES + 1):
                 print("="*50)
-                print(f"Downloading URL {i}: Attempt {attempt} of {MAX_RETRIES}")
+                Enhanced_Menu.print_status(f"Attempt {attempt} for URL {i}", "info")
                 
                 # Add delay between retries
                 if attempt > 1:
@@ -1460,31 +1492,36 @@ class Youtube_Downloader:
         except Exception as e:
             self.log_failure(f"Error updating the file: {e}")
         
+        # Summarise Download Outcome
         print("\n" + "="*50)
-        print(f"Download Summary:")
-        print(f"Successfully downloaded: {success_count}")
-        print(f"Failed: {failed_count}")
+        Enhanced_Menu.print_header(f"Download Summary:")
+        Enhanced_Menu.print_status(f"Successfully downloaded: {success_count}", "success")
+        Enhanced_Menu.print_status(f"Failed: {failed_count}", "failed")
         print("="*50)
         
         return failed_count == 0
 
+    @rate_limit(calls_per_minute=30)
     def search_a_song(self):
         """Search for a song and download it"""
-        song_query = input("What is the name of the song you're looking for: ").strip()
+        Enhanced_Menu.print_header("SEARCH & DOWNLOAD")
+        song_query = Enhanced_Menu.get_input("What is the name of the song you're looking for: ").strip()
 
         if not song_query:
-            print("No input provided")
+            Enhanced_Menu.print_status("No search query provided", "error")
             return False
         
-        self.get_user_preferences()
+        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+            self.get_user_preferences()
+            
         search_time = time.time()
-        print("Searching for the song. Browsing through YouTube...")
+        Enhanced_Menu.print_header("Searching for the song. Browsing through YouTube...")
         
         output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
         
         for attempt in range(1, MAX_RETRIES + 1):
             print("="*50)
-            print(f"Search and download attempt: {attempt} of {MAX_RETRIES}:")
+            Enhanced_Menu.print_header(f"Search and download")
             
             # Add delay between retries
             if attempt > 1:
@@ -1512,31 +1549,29 @@ class Youtube_Downloader:
     def download_channel(self):
         """Download all videos from a YouTube channel"""
         print("\n" + "="*50)
-        print("Channel Download")
+        Enhanced_Menu.print_header("Channel Download")
         print("="*50)
-        print("Note: This will download all videos from a YouTube channel")
-        print("This may take a long time depending on the channel size")
+        Enhanced_Menu.print_status("Warning: This may download many videos", "error")
+        Enhanced_Menu.print_status("It could take a long time and use significant disk space", "error")
         print("="*50)
         
-        channel_url = input("Enter YouTube channel URL: ").strip()
-        
+        channel_url = Enhanced_Menu.get_input("Enter YouTube channel URL: ", "str")
         if not channel_url:
             print("No URL provided")
             return False
         
         if not self.validate_youtube_url(channel_url):
-            print("Invalid YouTube URL. Please enter a valid YouTube channel URL")
+            Enhanced_Menu.print_status("Invalid YouTube URL. Please enter a valid YouTube channel URL", "error")
             return False
         
-        self.get_user_preferences()
-        
-        # Ask for confirmation
-        confirm = input(f"\nWARNING: This will download ALL videos from the channel. Continue? (y/n): ").strip().lower()
-        if confirm not in ['y', 'yes']:
-            print("Channel download cancelled.")
+        confirm = Enhanced_Menu.get_input("Are you sure you want to download ALL videos from this channel? (y/n)", "yn", default=False)
+        if not confirm:
+            Enhanced_Menu.print_status("Channel download cancelled", "info")
             return False
         
-        print("="*50)
+        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+            self.get_user_preferences()
+        
         print(f"Starting Channel download. This may take a VERY long time...")
         start_time = time.time()
         output_template = str(self.__output_directory/ "%(channel)s/%(artist)s - %(title)s.%(ext)s")
@@ -1615,6 +1650,7 @@ class Youtube_Downloader:
     @staticmethod
     def check_ffmpeg():
         """ Check if ffmpeg is installed"""
+        Enhanced_Menu.print_header("Checking for FFMpeg")
         if shutil.which("ffmpeg"):
             print("ffmpeg is already installed")
             
@@ -1630,17 +1666,15 @@ class Youtube_Downloader:
                 )
                 if result.returncode == 0:
                     version = result.stdout.strip()
-                    print(f"ffmpeg version: {version}")
+                    Enhanced_Menu.print_status(f"ffmpeg version: {version}")
                     return True
             except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
-                print("Could not determine ffmpeg version")
+                Enhanced_Menu.print_status("Could not determine ffmpeg version", "")
                 return False
     
     @staticmethod     
     def show_ytdlp_help():
-        """
-        Display yt-dlp help
-        """
+        """ Display yt-dlp help """
         try:
             result = subprocess.run(
                 ["yt-dlp", "--help"],
@@ -1650,16 +1684,21 @@ class Youtube_Downloader:
                 check=True,
             )
             print("\n" + "="*50)
-            print("YT-DLP HELP")
+            Enhanced_Menu.print_header("YT-DLP HELP")
             print("="*50)
-            print(result.stdout[:2000])  # Show first 2000 characters
+            print(result.stdout[:1000])  # Show first 1000 characters
             print("\n... (output truncated, use 'yt-dlp --help' for full help)")
         except subprocess.CalledProcessError as e:
-            print(f"Could not get yt-dlp help: {e}")
-    
+            Enhanced_Menu.print_status(f"Could not get yt-dlp help: {e}", "error")
+            return False
+
+        input("\nPress Enter to continue....")
+        return True
+        
     @staticmethod
     def check_dependecies():
         "Check for missing dependencies"
+        Enhanced_Menu.print_header("Checking for Missing Dependencies")
         missing_packages = []
         for package in ['browser_cookie3' ,'colorama', 'tqdm', 'yt-dlp']:
             try:
@@ -1671,6 +1710,8 @@ class Youtube_Downloader:
             print(f"Missing packages: {', '.join(missing_packages)}")
             print("Install with: pip install " + " ".join(missing_packages))
             return False
+        
+        input("\nPress Enter to continue....")
         return True
     
     @staticmethod
@@ -1688,72 +1729,36 @@ class Youtube_Downloader:
             try:
                 __import__(package_name)
             except ImportError:
-                print(f"Installing {package_name}.... ")
+                Enhanced_Menu.print_color(f"Installing {package_name}....")
                 subprocess.check_call([sys.executable, "-m", "pip", "install"] + packages)
                               
-    def troubleshooting():
+    def troubleshooting(self):
         """Troubleshooting"""
         print("\n" + "="*50)
-        print("YT-DLP Troubleshooting")
+        Enhanced_Menu.print_header("TROUBLESHOOTING", "")
         print("="*50)
         
-        # Check if yt-dlp is installed
         print("Hello, this troubleshooter is to help if you're experiencing problem in the program")
         print("Running a simple daignostic. This might take a while.....")
         
-        # Check if yt-dlp is installed
-        print("1. Checking yt-dlp installation...")
-        if not shutil.which("yt-dlp"):
-            print(" yt-dlp not found in PATH")
-            print(" Try: Install yt-dlp by running the command in terminal: pip install yt-dlp")
-            return False
-        else:
-            print("yt-dlp found")
+        # 1. Check if yt-dlp is installed
+        Enhanced_Menu.print_status("1. Checking yt-dlp installation...", "info")
+        if not Youtube_Downloader.check_ytdlp():
+            Enhanced_Menu.print_status("yt-dlp not found or not working", "error")
+            install = Enhanced_Menu.get_input("Install yt-dlp now? (y/n)", "yn", default=True)
+            if install:
+                self.setup_dependencies()
         
-        try:
-            result = subprocess.run(
-                ["yt-dlp", "--version"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=10
-            )
-            print(f" Version: {result.stdout.strip()}")
-        except:
-            print(" Could not get version") 
 
-        # Check if FFmpeg (needed for audio conversion)
-        print("\n2. Checking FFmpeg...")
-        if not shutil.which("ffmpeg"):
-            print(" FFmpeg not found (audio conversion might fail & errors might occur when retrieving metadata)")
-            print(" Install FFmpeg from: https://ffmpeg.org/download.html")
-        else:
-            print(" FFmpeg found")
+        Enhanced_Menu.print_status("\n2. Checking FFmpeg installation...", "info")
+        if not Youtube_Downloader.check_ffmpeg():
+            Enhanced_Menu.print_status("FFmpeg not found (audio conversion might fail)", "warning")
 
-        try:
-            result = subprocess.run(
-                ["ffmpeg", "-version"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=10
-            )
-            print(f" Version: {result.stdout.strip()}")
-        except:
-            print(" Could not get version")
 
-        # Test with a simple download
-        print("\n3. Testing download with a known video...")
-        test_url = "https://music.youtube.com/watch?v=215T8NF93kw" 
+        Enhanced_Menu.print_status("\n3. Testing YouTube access...", "info")
+        test_url = "https://music.youtube.com/watch?v=215T8NF93kw"
         try:
-            # Simple test without conversion
-            test_command = [
-                "yt-dlp",
-                "--skip-download",
-                "--print-json",
-                test_url
-            ]
-            
+            test_command = ["yt-dlp", "--skip-download", "--print-json", test_url]
             result = subprocess.run(
                 test_command,
                 stdout=subprocess.PIPE,
@@ -1763,144 +1768,429 @@ class Youtube_Downloader:
             )
             
             if result.returncode == 0:
-                print("   ✅ Can access YouTube")
-                try:
-                    data = json.loads(result.stdout)
-                    print(f"Test video title: {data.get('title', 'Unknown')[:50]}...")
-                except:
-                    print(" Can access YouTube (metadata parse failed)")
+                Enhanced_Menu.print_status("Can access YouTube", "success")
             else:
-                print(f" Cannot access YouTube: {result.stderr[:100]}")            
-        
+                Enhanced_Menu.print_status(f"Cannot access YouTube: {result.stderr[:100]}", "error")
         except Exception as e:
-            print("Test failed.")
+            Enhanced_Menu.print_status(f"Test failed: {e}", "error")
+        
+        Enhanced_Menu.print_status("\n4. Checking directories...", "info")
+        directories = ["log", "Albums", "links", "cookies"]
+        for directory in directories:
+            if os.path.exists(directory):
+                Enhanced_Menu.print_status(f"{directory}/ exists", "success")
+            else:
+                Enhanced_Menu.print_status(f"{directory}/ missing", "warning")
+        
+        input("\nPress Enter to continue...")
+        return True
 
     @staticmethod     
     def program_info():
-        """
-        Display program information
-        """
+        """ Display program information """
         print("="*80)
-        print("Interactive YouTube/YouTube Music Playlist/Album/Track Downloader")
+        Enhanced_Menu.print_header("Interactive YouTube/YouTube Music Playlist/Album/Track Downloader")
         print("="*80)
-        print("This is a simple to use downloader that can help in downloading")
-        print("albums/playlist/single tracks etc from YouTube and YouTube Music")
-        print("\n" + "-"*80)
-        print("Each function explained:")
-        print("\n=== Basic Functions ===")
-        print("* download_track - Downloads a single track from YouTube/YouTube Music")
-        print("* download_album - Downloads an album from YouTube Music")
-        print("* download_playlist - Downloads a playlist from YouTube/YouTube Music")
         
-        print("\n=== Special Functions ===")      
-        print("* download_from_file - Downloads from a text file with YouTube URLs")
-        print("* search_a_song - Search for a song & download it from YouTube")
-        print("* manage_cookies - Manage browser cookies for authentication")       
-        print("* download_channel - Downloads ALL videos from a YouTube channel")
-        
-        print("\n=== Help functions: Provides help with the program ===")
-        print("* program_info - Provides context on the program")
-        print("* check_ytdlp - Checks for yt-dlp & installs it if doesn't exist")
-        print("* show_ytdlp_help - Provides context on yt-dlp commands")
-        print("* check_ytdlp - Checks for yt-dlp & installs it if doesn't exist")
-        print("* check_ffmpeg - Checks for ffmpeg installation")
-        print("* show_ytdlp_help - Provides context on yt-dlp commands")
-        print("* troubleshooting - Troubleshoot common download issues")        
-        print("="*80)
+        print(f"""
+            {Fore.CYAN}Description:{Style.RESET_ALL}
+            A comprehensive tool for downloading music from YouTube and YouTube Music
+            with support for albums, playlists, channels, and individual tracks.
+
+            {Fore.CYAN}Features:{Style.RESET_ALL}
+            • Download single tracks from YouTube/YouTube Music
+            • Download complete albums from YouTube Music
+            • Download playlists with metadata preservation
+            • Batch download from text files
+            • Search and download songs by name
+            • Download entire YouTube channels
+            • Cookie management for authentication
+            • Customizable audio format and quality
+            • Progress tracking with visual feedback
+
+            {Fore.CYAN}Formats Supported:{Style.RESET_ALL}
+            MP3, M4A, FLAC, OGG, OPUS, WAV
+
+            {Fore.CYAN}Requirements:{Style.RESET_ALL}
+            • Python 3.7+
+            • yt-dlp
+            • FFmpeg (recommended for audio conversion)
+            • Internet connection
+
+            {Fore.CYAN}Usage Tips:{Style.RESET_ALL}
+            • Use cookies for age-restricted or region-restricted content
+            • Configure settings before large downloads
+            • Check dependencies if encountering issues
+            • Use batch files for multiple downloads
+            • Monitor disk space for large downloads
+            """)
+                    
+        input("\nPress Enter to continue...")
+        return True
        
-def display_menu() -> None:
-    """Display the main menu."""
-    menu = """
-    ========================================================================
-    INTERACTIVE MUSIC DOWNLOADER USING YT-DLP
-    ========================================================================
-    Select an option:
-    1.  Download Track
-    2.  Download Album
-    3.  Download Playlist
-    4.  Download from Text File
-    5.  Search and Download Song
-    6.  Download YouTube Channel (All Videos)
-    7.  Manage Cookies (for age-restricted consent)
-    8.  Check/Install yt-dlp
-    9.  Show yt-dlp Help
-    10.  Check ffmpeg
-    11. Show Program Info
-    12. Troubleshoot Download Issue
-    13. Exit
-    ========================================================================
-    """
-    print(menu)
 
 def main():
-    """Main function to run the YouTube Downloader."""
-    print("="*50)
-    print("Initializing YouTube/YouTube Music Downloader...")
+    """Main function to run the YouTube Downloader with integrated menus."""
+    # Initialize
+    Enhanced_Menu.clear_screen()
+    print("="*80)
+    print(f"""{Fore.CYAN}{Style.BRIGHT}
+    ███╗   ███╗██╗   ██╗███████╗██╗ ██████╗     ██████╗ ██████╗ ███╗   ██╗██╗   ██╗███████╗██████╗ ████████╗███████╗██████╗ 
+    ████╗ ████║██║   ██║██╔════╝██║██╔════╝    ██╔════╝██╔═══██╗████╗  ██║██║   ██║██╔════╝██╔══██╗╚══██╔══╝██╔════╝██╔══██╗
+    ██╔████╔██║██║   ██║███████╗██║██║         ██║     ██║   ██║██╔██╗ ██║██║   ██║█████╗  ██████╔╝   ██║   █████╗  ██████╔╝
+    ██║╚██╔╝██║██║   ██║╚════██║██║██║         ██║     ██║   ██║██║╚██╗██║╚██╗ ██╔╝██╔══╝  ██╔══██╗   ██║   ██╔══╝  ██╔══██╗
+    ██║ ╚═╝ ██║╚██████╔╝███████║██║╚██████╗    ╚██████╗╚██████╔╝██║ ╚████║ ╚████╔╝ ███████╗██║  ██║   ██║   ███████╗██║  ██║
+    ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝                                                                                                 
+    {Style.RESET_ALL}""")
+    
+    print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}Initializing YouTube Music Downloader...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
     
     # Create necessary directories
-    os.makedirs("log", exist_ok=True)
-    os.makedirs("Albums", exist_ok=True)
-    os.makedirs("links", exist_ok=True)
-    os.makedirs(COOKIE_DIRECTORY, exist_ok=True)
+    directories = ["log", "Albums", "links", "cookies"]
+    for directory in directories:
+        os.makedirs(directory, exist_ok=True)
+        print(f"{Fore.GREEN}✓{Style.RESET_ALL} Directory '{directory}/' ready")
     
-    if not Youtube_Downloader.check_ytdlp():
-        print("="*50)
-        print("\n Failed to install yt-dlp. Please install it manually using:")
-        print("pip install yt-dlp")
-        print("Then run the program again.")
-        print("="*50)
-        return
+    # Create downloader instance
+    try:
+        downloader = Youtube_Downloader()
+        Enhanced_Menu.print_status("Downloader initialized successfully", "success")
+        time.sleep(1)
+    except Exception as e:
+        Enhanced_Menu.print_status(f"Initialization error: {e}", "error")
+        input("\nPress Enter to exit...")
+        sys.exit(1)
     
-    downloader = Youtube_Downloader()
+    # Define action handlers
+    def handle_exit():
+        """Graceful exit function"""
+        Enhanced_Menu.clear_screen()
+        Enhanced_Menu.print_header("THANK YOU", "Goodbye!")
+        
+        print(f"""{Fore.CYAN}
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║          Thank you for using YouTube Music Downloader!       ║
+║                                                              ║
+║                      Happy Listening!                        ║
+║                                                              ║
+║                                                              ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+{Style.RESET_ALL}""")
+        
+        # Save settings on exit
+        try:
+            downloader.save_config()
+            print(f"{Fore.GREEN}Settings saved.{Style.RESET_ALL}")
+        except:
+            pass
+        
+        print(f"\n{Fore.CYAN}Goodbye!{Style.RESET_ALL}\n")
+        sys.exit(0)
     
+    def handle_settings():
+        """Handle program settings menu"""
+        while True:
+            Enhanced_Menu.clear_screen()
+            Enhanced_Menu.print_header("PROGRAM SETTINGS", "Configure download preferences")
+            
+            # Audio Settings Section
+            Enhanced_Menu.print_section("🎵 AUDIO SETTINGS")
+            
+            current_format = downloader._Youtube_Downloader__audio_format
+            current_quality = downloader._Youtube_Downloader__audio_quality
+            
+            Enhanced_Menu.print_menu_item(1, "Audio Format", 
+                                       f"Current: {Fore.GREEN}{current_format.upper()}{Style.RESET_ALL}")
+            Enhanced_Menu.print_menu_item(2, "Audio Quality", 
+                                       f"Current: {Fore.GREEN}{current_quality}{Style.RESET_ALL}")
+            
+            # Output Settings Section
+            Enhanced_Menu.print_section("📁 OUTPUT SETTINGS")
+            
+            current_dir = str(downloader._Youtube_Downloader__output_directory)
+            Enhanced_Menu.print_menu_item(3, "Output Directory", 
+                                       f"Current: {Fore.CYAN}{current_dir}{Style.RESET_ALL}")
+            
+            # Network Settings Section
+            Enhanced_Menu.print_section("🌐 NETWORK SETTINGS")
+            
+            cookie_status = "ENABLED" if downloader.use_cookies else "DISABLED"
+            cookie_color = Fore.GREEN if downloader.use_cookies else Fore.YELLOW
+            Enhanced_Menu.print_menu_item(4, "Cookie Authentication", 
+                                       f"Current: {cookie_color}{cookie_status}{Style.RESET_ALL}")
+            
+            # Configuration Management Section
+            Enhanced_Menu.print_section("💾 CONFIGURATION")
+            Enhanced_Menu.print_menu_item(5, "Save Settings", "Save current settings to file")
+            Enhanced_Menu.print_menu_item(6, "Load Settings", "Load settings from file")
+            Enhanced_Menu.print_menu_item(7, "Reset to Defaults", "Restore default settings")
+            
+            # Navigation
+            Enhanced_Menu.print_section("↩️  NAVIGATION")
+            Enhanced_Menu.print_menu_item(8, "Back to Main Menu", "Return to main menu")
+            
+            print()
+            
+            choice = Enhanced_Menu.get_input("Select option", "int", 1, 8)
+            
+            if choice == 1:
+                Enhanced_Menu.clear_screen()
+                Enhanced_Menu.print_header("AUDIO FORMAT", "Select output format")
+                
+                formats = [
+                    ("MP3", "mp3", "Most compatible, good quality"),
+                    ("FLAC", "flac", "Lossless audio, large files"),
+                    ("M4A", "m4a", "Apple format, good quality"),
+                    ("OPUS", "opus", "Excellent compression, high quality"),
+                    ("OGG", "ogg", "Open format, good compression"),
+                    ("WAV", "wav", "Uncompressed, large files"),
+                ]
+                
+                for i, (name, code, desc) in enumerate(formats, 1):
+                    is_current = " ✓" if code == current_format else ""
+                    print(f"  {Fore.YELLOW}[{i}]{Style.RESET_ALL} {Fore.CYAN}{name:6}{Style.RESET_ALL} - {desc}{Fore.GREEN}{is_current}{Style.RESET_ALL}")
+                
+                print()
+                format_choice = Enhanced_Menu.get_input("Select format (1-6)", "int", 1, 6, default=1)
+                if format_choice:
+                    new_format = formats[format_choice - 1][1]
+                    downloader._Youtube_Downloader__audio_format = new_format
+                    Enhanced_Menu.print_status(f"Audio format set to {new_format.upper()}", "success")
+                    
+            elif choice == 2:
+                Enhanced_Menu.clear_screen()
+                Enhanced_Menu.print_header("AUDIO QUALITY", "Select bitrate/quality")
+                
+                qualities = [
+                    ("320k", "High quality (320 kbps)", "Excellent for most music"),
+                    ("256k", "Very good (256 kbps)", "Great quality, smaller files"),
+                    ("192k", "Good (192 kbps)", "Good balance of quality/size"),
+                    ("128k", "Standard (128 kbps)", "Acceptable quality, small files"),
+                    ("auto", "Auto-select", "Let yt-dlp choose the best"),
+                    ("disable", "Original quality", "Keep original audio as-is"),
+                ]
+                
+                for i, (code, name, desc) in enumerate(qualities, 1):
+                    is_current = " ✓" if code == current_quality else ""
+                    print(f"  {Fore.YELLOW}[{i}]{Style.RESET_ALL} {Fore.CYAN}{name:20}{Style.RESET_ALL} - {desc}{Fore.GREEN}{is_current}{Style.RESET_ALL}")
+                
+                print()
+                quality_choice = Enhanced_Menu.get_input("Select quality (1-6)", "int", 1, 6)
+                if quality_choice:
+                    new_quality = qualities[quality_choice - 1][0]
+                    downloader._Youtube_Downloader__audio_quality = new_quality
+                    Enhanced_Menu.print_status(f"Audio quality set to {new_quality}", "success")
+                    
+            elif choice == 3:
+                Enhanced_Menu.clear_screen()
+                Enhanced_Menu.print_header("OUTPUT DIRECTORY", "Set where files are saved")
+                
+                print(f"{Fore.YELLOW}Current directory:{Style.RESET_ALL} {Fore.CYAN}{current_dir}{Style.RESET_ALL}")
+                print()
+                print(f"{Fore.WHITE}Enter new directory path:{Style.RESET_ALL}")
+                print(f"{Style.DIM}Examples:{Style.RESET_ALL}")
+                print(f"  {Fore.CYAN}./Music{Style.RESET_ALL} - Save to 'Music' folder in current directory")
+                print(f"  {Fore.CYAN}~/Downloads{Style.RESET_ALL} - Save to Downloads folder")
+                print(f"  {Fore.CYAN}C:\\Users\\You\\Music{Style.RESET_ALL} - Windows absolute path")
+                print()
+                
+                new_dir = Enhanced_Menu.get_input("New directory path", "str", default=current_dir)
+                if new_dir and new_dir != current_dir:
+                    try:
+                        downloader._Youtube_Downloader__output_directory = Path(new_dir)
+                        downloader._Youtube_Downloader__output_directory.mkdir(parents=True, exist_ok=True)
+                        Enhanced_Menu.print_status(f"Output directory changed to {new_dir}", "success")
+                    except Exception as e:
+                        Enhanced_Menu.print_status(f"Error: {str(e)[:50]}", "error")
+                        
+            elif choice == 4:
+                Enhanced_Menu.clear_screen()
+                Enhanced_Menu.print_header("COOKIE SETTINGS", "Manage authentication")
+                
+                print(f"{Fore.WHITE}Cookies help with:{Style.RESET_ALL}")
+                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Age-restricted content")
+                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Region-restricted videos")
+                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Private playlists")
+                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} YouTube Premium content")
+                print()
+                print(f"{Fore.YELLOW}Current status:{Style.RESET_ALL} ", end="")
+                if downloader.use_cookies:
+                    print(f"{Fore.GREEN}ENABLED{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}DISABLED{Style.RESET_ALL}")
+                print()
+                
+                new_setting = Enhanced_Menu.get_input("Enable cookies? (y/n)", "yn", 
+                                                    default=downloader.use_cookies)
+                if new_setting is not None:
+                    downloader.use_cookies = new_setting
+                    status = "enabled" if new_setting else "disabled"
+                    Enhanced_Menu.print_status(f"Cookies {status}", "success")
+                    
+            elif choice == 5:
+                try:
+                    downloader.save_config()
+                    Enhanced_Menu.print_status("Settings saved successfully", "success")
+                except Exception as e:
+                    Enhanced_Menu.print_status(f"Error saving settings: {e}", "error")
+                    
+            elif choice == 6:
+                try:
+                    downloader.load_config()
+                    Enhanced_Menu.print_status("Settings loaded successfully", "success")
+                except Exception as e:
+                    Enhanced_Menu.print_status(f"Error loading settings: {e}", "error")
+                    
+            elif choice == 7:
+                Enhanced_Menu.clear_screen()
+                Enhanced_Menu.print_header("RESET SETTINGS", "Restore defaults")
+                
+                print(f"{Fore.YELLOW}⚠️  WARNING:{Style.RESET_ALL}")
+                print(f"{Fore.WHITE}This will reset ALL settings to their default values.{Style.RESET_ALL}")
+                print()
+                print(f"{Fore.CYAN}Default settings:{Style.RESET_ALL}")
+                print(f"  Format: {Fore.YELLOW}mp3{Style.RESET_ALL}")
+                print(f"  Quality: {Fore.YELLOW}320k{Style.RESET_ALL}")
+                print(f"  Output: {Fore.YELLOW}Albums/{Style.RESET_ALL}")
+                print(f"  Cookies: {Fore.YELLOW}Disabled{Style.RESET_ALL}")
+                print()
+                
+                confirm = Enhanced_Menu.get_input("Are you sure? (y/n)", "yn", default=False)
+                if confirm:
+                    downloader.__init__()
+                    Enhanced_Menu.print_status("Settings reset to defaults", "success")
+                    
+            elif choice == 8:
+                break
+                
+            if choice != 8:
+                input(f"\n{Fore.CYAN}Press Enter to continue...{Style.RESET_ALL}")
+    
+    # Define actions dictionary
+    actions = {
+        1: downloader.download_track,
+        2: downloader.download_album,
+        3: downloader.download_playlist,
+        4: downloader.download_from_file,
+        5: downloader.search_a_song,
+        6: downloader.download_channel,
+        7: downloader.manage_cookies,
+        8: downloader.check_dependecies,
+        9: handle_settings,
+        10: lambda: Youtube_Downloader.program_info(),
+        11: downloader.troubleshooting,
+        12: lambda: Youtube_Downloader.show_ytdlp_help(),
+        13: handle_exit
+    }
+    
+    # Main program loop
     while True:
-        display_menu()
-        print("="*50)
-        choice = input("\nEnter your choice (1-13): ").strip()
-        
-        if choice == "13":
-            print("\n" + "="*50)
-            print("Thank you for using YouTube Downloader. Goodbye!")
-            print("="*50)
-            break
+        try:
+            Enhanced_Menu.clear_screen()
+            # Display main menu
+            print(f"""{Fore.CYAN}{Style.BRIGHT}
+                ███╗   ███╗██╗   ██╗███████╗██╗ ██████╗     ██████╗ ██████╗ ███╗   ██╗██╗   ██╗███████╗██████╗ ████████╗███████╗██████╗ 
+                ████╗ ████║██║   ██║██╔════╝██║██╔════╝    ██╔════╝██╔═══██╗████╗  ██║██║   ██║██╔════╝██╔══██╗╚══██╔══╝██╔════╝██╔══██╗
+                ██╔████╔██║██║   ██║███████╗██║██║         ██║     ██║   ██║██╔██╗ ██║██║   ██║█████╗  ██████╔╝   ██║   █████╗  ██████╔╝
+                ██║╚██╔╝██║██║   ██║╚════██║██║██║         ██║     ██║   ██║██║╚██╗██║╚██╗ ██╔╝██╔══╝  ██╔══██╗   ██║   ██╔══╝  ██╔══██╗
+                ██║ ╚═╝ ██║╚██████╔╝███████║██║╚██████╗    ╚██████╗╚██████╔╝██║ ╚████║ ╚████╔╝ ███████╗██║  ██║   ██║   ███████╗██║  ██║
+                ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝                                                                                                 
+            {Style.RESET_ALL}""")
+            
+            Enhanced_Menu.print_header("Main Menu", "Select an option below:")
+            
+            Enhanced_Menu.print_section("📥 DOWNLOAD OPTIONS")
+            Enhanced_Menu.print_menu_item(1, "Download Track")
+            Enhanced_Menu.print_menu_item(2, "Download Album")
+            Enhanced_Menu.print_menu_item(3, "Download Playlist")
+            Enhanced_Menu.print_menu_item(4, "Download From Text File")
+            Enhanced_Menu.print_menu_item(5, "Search & Download a Song")
+            Enhanced_Menu.print_menu_item(6, "Download a YouTube Channel")
+            
+            # Tools Section
+            Enhanced_Menu.print_section("⚙️  TOOLS & SETTINGS")
+            Enhanced_Menu.print_menu_item(7, "Manage Cookies (for restricted content)")
+            Enhanced_Menu.print_menu_item(8, "Check Dependencies")
+            Enhanced_Menu.print_menu_item(9, "Program Settings")
+            
+            # Help Section
+            Enhanced_Menu.print_section("❓ HELP & INFORMATION")
+            Enhanced_Menu.print_menu_item(10, "Show Program Info")
+            Enhanced_Menu.print_menu_item(11, "Troubleshooting")
+            Enhanced_Menu.print_menu_item(12, "Show yt-dlp Help")
+            
+            # Exit Section
+            Enhanced_Menu.print_section("🚪 EXIT")
+            Enhanced_Menu.print_menu_item(13, "Exit Program")
+            
+            print(f"\n{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
+            
+            # Display current settings
+            Enhanced_Menu.print_status("Current Settings:", "info", "⚙️")
+            
+            settings = [
+                ("Format", downloader._Youtube_Downloader__audio_format),
+                ("Quality", downloader._Youtube_Downloader__audio_quality),
+                ("Output", str(downloader._Youtube_Downloader__output_directory)),
+            ]
+            
+            for setting_name, setting_value in settings:
+                print(f"  {Fore.CYAN}{setting_name}:{Style.RESET_ALL} {Fore.YELLOW}{setting_value}{Style.RESET_ALL}")
+            
+            cookie_status = "Enabled" if downloader.use_cookies else "Disabled"
+            cookie_color = Fore.GREEN if downloader.use_cookies else Fore.YELLOW
+            print(f"  {Fore.CYAN}Cookies:{Style.RESET_ALL} {cookie_color}{cookie_status}{Style.RESET_ALL}")
+            
+            print(f"{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
+            
+            # Get user choice
+            choice = Enhanced_Menu.get_input("\nEnter your choice (1-13): ", "int", 1, 13)
+            
+            # Execute action
+            action = actions.get(choice)
+            if action:
+                Enhanced_Menu.clear_screen()
+                try:
+                    # Execute the action
+                    success = action()
+                    
+                    # If action returns False (failure), ask to retry
+                    if success is False and choice not in [8, 10, 11, 12, 13]:
+                        print()
+                        retry = Enhanced_Menu.get_input("Operation failed. Try again? (y/n)", "yn", default=True)
+                        if retry:
+                            continue
+                            
+                except KeyboardInterrupt:
+                    Enhanced_Menu.print_status("Operation cancelled", "warning")
+                except Exception as e:
+                    Enhanced_Menu.print_status(f"Error: {e}", "error")
+                    downloader.log_error(f"Menu option {choice} error: {e}", exc_info=True)
+            else:
+                Enhanced_Menu.print_status("Invalid option", "error")
+            
+            # Ask to continue (unless exiting)
+            if choice != 13:
+                print()
+                cont = Enhanced_Menu.get_input("Return to main menu? (y/n)", "yn", default=True)
+                if not cont:
+                    handle_exit()
+                
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}Interrupted by user{Style.RESET_ALL}")
+            handle_exit()
+        except Exception as e:
+            Enhanced_Menu.print_status(f"Unexpected error: {e}", "error")
+            if Enhanced_Menu.get_input("Continue? (y/n)", "yn", default=True):
+                continue
+            else:
+                handle_exit()
 
-        actions = {
-            "1": downloader.download_track,
-            "2": downloader.download_album,
-            "3": downloader.download_playlist,
-            "4": downloader.download_from_file,
-            "5": downloader.search_a_song,
-            "6": downloader.download_channel,
-            "7": downloader.manage_cookies,
-            "8": Youtube_Downloader.check_ytdlp,
-            "9": Youtube_Downloader.show_ytdlp_help,
-            "10": Youtube_Downloader.check_ffmpeg,
-            "11": Youtube_Downloader.program_info,
-            "12": downloader.troubleshooting,
-        }
-        
-        action = actions.get(choice)
-        if action:
-            try:
-                action()
-            except KeyboardInterrupt:
-                print("\nOperation cancelled by user.")
-            except Exception as e:
-                print(f"\nAn error occurred during the operation: {e}")
-                print("Check the error log for details.")
-                downloader.log_error(f"Menu option {choice} error: {e}", exc_info=True)
-        else:
-            print("="*50)
-            print("Invalid choice. Please enter a number between 1 and 12.")
-            continue
-        
-        print("\n" + "="*50)
-        cont = input("Return to main menu? (y/n): ").strip().lower()
-        if cont not in ['y', 'yes', '']:
-            print("="*50)
-            print("\nThank you for using YouTube Downloader. Goodbye!")
-            break
-        
+
 if __name__ == "__main__":
     try:
         main()
