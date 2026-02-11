@@ -1095,7 +1095,7 @@ class Spotify_Downloader:
             self.log_error(f"Unexpected error in run_download: {e}")
             return None
 
-    def rate_limit(self, calls_per_minute=60):
+    def rate_limit(calls_per_minute=60):
         """Rate limit decorator to avoid blockage from (Improved)"""
         def decorator(func):
             last_called = [0.0]
@@ -1125,7 +1125,7 @@ class Spotify_Downloader:
         while True:  # Add outer loop for URL input retry
             print("\n" + "="*55)
             Enhanced_Menu.clear_screen()
-            Enhanced_Menu.print_header("Download Track")
+            Enhanced_Menu.print_header("Track Download")
 
             url = Enhanced_Menu.get_input("Enter Spotify URL (or 'back' to return)", "str")
             
@@ -1310,7 +1310,7 @@ class Spotify_Downloader:
         while True:
             print("\n" + "="*55)
             Enhanced_Menu.clear_screen()
-            Enhanced_Menu.print_header("Playlist Download", "Download playlists from Spotify")
+            Enhanced_Menu.print_header("Playlist Download")
             
             url = Enhanced_Menu.get_input("Enter Spotify playlist URL (or 'back' to return): ", "str")
             
@@ -1389,7 +1389,8 @@ class Spotify_Downloader:
                 else:
                     self.log_failure(f"Failed to download after {MAX_RETRIES} attempts")
                     return False
-                    
+                
+            print("="*50)       
             return False
     
     @rate_limit(calls_per_minute=30)
@@ -1586,7 +1587,8 @@ class Spotify_Downloader:
     
     @rate_limit(calls_per_minute=30)
     def search_a_song(self):
-        """Search for a song and download"""    
+        """Search for a song and download"""
+        print("\n" + "="*55)
         Enhanced_Menu.clear_screen()
         Enhanced_Menu.print_header("Search & Download", "Search for songs by name")
         
@@ -1599,13 +1601,12 @@ class Spotify_Downloader:
         if Enhanced_Menu.get_input("Configure download settings? (y/n): ", "yn", default=False):
             self.get_user_preferences()
         
-        Enhanced_Menu.print_status(f"Searching for: '{song_query}'", "info")
-        search_time = time.time()
+        Enhanced_Menu.print_status(f"Searching for: '{song_query}', this might take a while...", "info")
         
         output_template = str(self.__output_directory / "{artists} - {title}.{output-ext}")
         
         for attempt in range(1, MAX_RETRIES + 1):
-            Enhanced_Menu.print_section(f"SEARCHing")
+            Enhanced_Menu.print_section(f"Searching")
             
             # Add delay between retries
             if attempt > 1:
@@ -1617,8 +1618,7 @@ class Spotify_Downloader:
                 result = self.run_download(song_query, output_template)
                 
                 if isinstance(result, subprocess.CompletedProcess) and result.returncode == 0:
-                    elapsed_time = time.time() - search_time
-                    self.log_success(f"Successfully downloaded in {elapsed_time:.1f} seconds!")
+                    self.log_success(f"Successfully downloaded")
                     return True
                 elif attempt < MAX_RETRIES:
                     Enhanced_Menu.print_status(f"Download failed. Retrying...", "error")
@@ -1643,7 +1643,7 @@ class Spotify_Downloader:
     def download_user_playlist(self):
         """Download a user's playlist (requires authentication)"""
         Enhanced_Menu.clear_screen()
-        Enhanced_Menu.print_header("USER PLAYLIST DOWNLOAD", "Download your personal playlists")
+        Enhanced_Menu.print_header("User Playlist Download", "Download your personal playlists")
         
         Enhanced_Menu.print_status("Note: This requires Spotify authentication", "warning")
         Enhanced_Menu.print_status("You will be redirected to the Spotify website for authorization", "info")
@@ -2002,19 +2002,17 @@ def main():
     Enhanced_Menu.clear_screen()
     
     print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
-    print(f"{Fore.MAGENTA}{Style.BRIGHT}")
-    print(r"""
-     _____             __  _  ______          _      _____                  
-    / ___/____  ____  / /_(_)/ ____/___  ____| |    / /   |  ______________ 
-    \__ \/ __ \/ __ \/ __/ / /   / __ \/ __ \ |   / / /| | / ___/ ___/ __ \
-   ___/ / /_/ / /_/ / /_/ / /___/ /_/ / /_/ / |  / / ___ |(__  ) /__/ /_/ /
-  /____/ .___/\____/\__/_/\____/\____/\____/| | /_/_/  |_/____/\___/\____/ 
-      /_/                                   |_/                           
-    """)
-    print(f"{Style.RESET_ALL}")
+
+    print(f"""{Fore.GREEN}{Style.BRIGHT}
+    ███╗   ███╗██╗   ██╗███████╗██╗ ██████╗     ██████╗ ██████╗ ███╗   ██╗██╗   ██╗███████╗██████╗ ████████╗███████╗██████╗ 
+    ████╗ ████║██║   ██║██╔════╝██║██╔════╝    ██╔════╝██╔═══██╗████╗  ██║██║   ██║██╔════╝██╔══██╗╚══██╔══╝██╔════╝██╔══██╗
+    ██╔████╔██║██║   ██║███████╗██║██║         ██║     ██║   ██║██╔██╗ ██║██║   ██║█████╗  ██████╔╝   ██║   █████╗  ██████╔╝
+    ██║╚██╔╝██║██║   ██║╚════██║██║██║         ██║     ██║   ██║██║╚██╗██║╚██╗ ██╔╝██╔══╝  ██╔══██╗   ██║   ██╔══╝  ██╔══██╗
+    ██║ ╚═╝ ██║╚██████╔╝███████║██║╚██████╗    ╚██████╗╚██████╔╝██║ ╚████║ ╚████╔╝ ███████╗██║  ██║   ██║   ███████╗██║  ██║
+    ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝                                                                                                 
+    {Style.RESET_ALL}""")
     print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}Initializing Spotify Music Downloader...{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
     
     # Create necessary directories
     directories = ["log", "Albums", "links"]
@@ -2238,15 +2236,16 @@ def main():
             # Display main menu
             print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
             print(f"{Fore.MAGENTA}{Style.BRIGHT}")
-            print(r"""
-     _____             __  _  ______          _      _____                  
-    / ___/____  ____  / /_(_)/ ____/___  ____| |    / /   |  ______________ 
-    \__ \/ __ \/ __ \/ __/ / /   / __ \/ __ \ |   / / /| | / ___/ ___/ __ \
-   ___/ / /_/ / /_/ / /_/ / /___/ /_/ / /_/ / |  / / ___ |(__  ) /__/ /_/ /
-  /____/ .___/\____/\__/_/\____/\____/\____/| | /_/_/  |_/____/\___/\____/ 
-      /_/                                   |_/                           
-    """)
-            print(f"{Style.RESET_ALL}")
+            
+            print(f"""{Fore.RED}{Style.BRIGHT}
+            ███╗   ███╗██╗   ██╗███████╗██╗ ██████╗     ██████╗ ██████╗ ███╗   ██╗██╗   ██╗███████╗██████╗ ████████╗███████╗██████╗ 
+            ████╗ ████║██║   ██║██╔════╝██║██╔════╝    ██╔════╝██╔═══██╗████╗  ██║██║   ██║██╔════╝██╔══██╗╚══██╔══╝██╔════╝██╔══██╗
+            ██╔████╔██║██║   ██║███████╗██║██║         ██║     ██║   ██║██╔██╗ ██║██║   ██║█████╗  ██████╔╝   ██║   █████╗  ██████╔╝
+            ██║╚██╔╝██║██║   ██║╚════██║██║██║         ██║     ██║   ██║██║╚██╗██║╚██╗ ██╔╝██╔══╝  ██╔══██╗   ██║   ██╔══╝  ██╔══██╗
+            ██║ ╚═╝ ██║╚██████╔╝███████║██║╚██████╗    ╚██████╗╚██████╔╝██║ ╚████║ ╚████╔╝ ███████╗██║  ██║   ██║   ███████╗██║  ██║
+            ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝                                                                                                 
+            {Style.RESET_ALL}""")
+            
             print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
             Enhanced_Menu.print_header("Main Menu", "Select an option below:")
             
