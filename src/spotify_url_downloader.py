@@ -542,7 +542,7 @@ class Spotify_Downloader:
         self._audio_quality = "320k"
         self._audio_format = "mp3"
         self._filepath = Path("links/spotify_links.txt")
-        self._configuration_file = Path("config/spotify_downloader_config.json")
+        self._configuration_file = Path("config/spotify_downloader.json")
 
         self.cookie_manager = CookieManager()
         self.use_cookies = False
