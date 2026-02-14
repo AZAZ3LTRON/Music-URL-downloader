@@ -610,7 +610,6 @@ class Youtube_Downloader:
     @rate_limit(calls_per_minute=30)
     def download_track(self):
         """Download a single track (same syntax for most download functions)"""
-        # Added outer loop for URL input retry
         while True:
             print("\n" + "=" * 55)
             Enhanced_Menu.clear_screen()
@@ -646,9 +645,9 @@ class Youtube_Downloader:
                 self.get_user_preferences()
                 
             Enhanced_Menu.print_status(f"Starting Track download: {url}. This may take a few minutes...", "info")
-            output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s").as_posix()
+            output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
             
-            success = False
+            successful = False
             for attempt in range(1, MAX_RETRIES + 1):
                 Enhanced_Menu.print_section(f"Downloading Track")
                 if attempt > 1:
@@ -658,14 +657,8 @@ class Youtube_Downloader:
                     result = self.run_download(url, output_template)
                     if result.returncode == 0:
                         self.log_success(f"Successfully downloaded track: {url}")
-                        
-                        # Ask if the user wishes to download another music file
-                        another = Enhanced_Menu.get_input("Download another track? (y/n): ", "yn")
-                        if another in ['y', 'yes']:
-                            success = True # Signals we want to download another URL
-                            break # Exit the retry loop
-                        else:
-                            return True
+                        successful = True
+                        break  # Exit retry loop on success
                         
                 except subprocess.CalledProcessError as e:
                     if attempt < MAX_RETRIES:
@@ -678,11 +671,26 @@ class Youtube_Downloader:
                         continue
                     else:
                         self.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
-            if success:
-                continue
+            
+            # Handle post-download actions
+            if successful:
+                # Clear any pending input
+                time.sleep(0.5)  # Small delay to ensure clean input buffer
+                
+                # Ask if user wants to download another
+                another = Enhanced_Menu.get_input("\nDownload another track? (y/n): ", "yn", default=True)
+                if another:
+                    continue  # Go to next iteration of outer while for new URL
+                else:
+                    return True  # Return to main menu
             else:
-                return False
-
+                # Download failed after all retries
+                retry = Enhanced_Menu.get_input("\nDownload failed. Try another URL? (y/n): ", "yn", default=True)
+                if retry:
+                    continue  # Try another URL
+                else:
+                    return False  # Return to main menu
+            
     @rate_limit(calls_per_minute=30)
     def download_album(self):
         """Download an album"""
@@ -715,7 +723,7 @@ class Youtube_Downloader:
                 self.get_user_preferences()
                 
             Enhanced_Menu.print_status(f"Starting Album download: {url}. This may take a few minutes...", "info")
-            output_template = str(self.__output_directory / "%(artist)s/%(album)s/%(artist)s - %(title)s.%(ext)s").as_posix()
+            output_template = str(self.__output_directory / "%(artist)s/%(album)s/%(artist)s - %(title)s.%(ext)s")
             
             success = False
             for attempt in range(1, MAX_RETRIES + 1):
@@ -727,12 +735,9 @@ class Youtube_Downloader:
                     result = self.run_download(url, output_template)
                     if result.returncode == 0:
                         self.log_success(f"Successfully downloaded album: {url}")
-                        another = input("Download another album? (y/n): ").strip().lower()
-                        if another in ['y', 'yes']:
-                            success = True # Signals we want to download another URL
-                            break # Exit the retry loop
-                        else:
-                            return True
+                        success = True # Signals we want to download another URL
+                        break # Exit the retry loop
+        
                 except subprocess.CalledProcessError as e:
                     if attempt < MAX_RETRIES:
                         self.log_error(f"Attempt {attempt} failed: {e}")
@@ -747,9 +752,22 @@ class Youtube_Downloader:
                         
             # After the for loop:
             if success:
-                continue          # go to next iteration of outer while → ask for new URL
+                time.sleep(0.5) # Pause activity for some time
+                
+                # Ask if user wants to downlaod another album
+                another = Enhanced_Menu.get_input("\nDownload another album? (y/n): ", "yn", default=True)
+                if another:
+                    continue  # Go to next iteration of outer while for new URL
+                else:
+                    return True  # Return to main menu
             else:
-                return False      # all retries exhausted
+                # Download failed after all retries
+                retry = Enhanced_Menu.get_input("\nDownload failed. Try another URL? (y/n): ", "yn", default=True)
+                if retry:
+                    continue  # Try another URL
+                else:
+                    return False  # Return to main menu
+                
     @rate_limit(calls_per_minute=30)
     def download_playlist(self):
         """Download a playlist"""
@@ -782,7 +800,7 @@ class Youtube_Downloader:
                 self.get_user_preferences()
                 
             Enhanced_Menu.print_status(f"Starting Playlist download: {url}. This may take a few minutes...", "info")
-            output_template = str(self.__output_directory / "%(playlist)s/%(artist)s - %(title)s.%(ext)s").as_posix()
+            output_template = str(self.__output_directory / "%(playlist)s/%(artist)s - %(title)s.%(ext)s")
             
             success = False
             for attempt in range(1, MAX_RETRIES + 1):
@@ -794,12 +812,9 @@ class Youtube_Downloader:
                     result = self.run_download(url, output_template)
                     if result.returncode == 0:
                         self.log_success(f"Successfully downloaded playlist {url}")
-                        another = Enhanced_Menu.get_input("Download another playlist? (y/n): ", "yn")
-                        if another in ['y', 'yes']:
-                            success = True
-                            break 
-                        else:
-                            return True
+                        success = True
+                        break 
+
                 except subprocess.CalledProcessError as e:
                     if attempt < MAX_RETRIES:
                         self.log_error(f"Attempt {attempt} failed: {e}")
@@ -811,11 +826,22 @@ class Youtube_Downloader:
                         continue
                     else:
                         self.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
-            # After the for loop:
+                        
             if success:
-                continue          # go to next iteration of outer while → ask for new URL
+                # Clear any pending input
+                time.sleep(0.5)
+                
+                another = Enhanced_Menu.get_input("\nDownload another track? (y/n): ", "yn", default=True)
+                if another:
+                    continue  
+                else:
+                    return True  
             else:
-                return False      # all retries exhausted
+                retry = Enhanced_Menu.get_input("\nDownload failed. Try another URL? (y/n): ", "yn", default=True)
+                if retry:
+                    continue 
+                else:
+                    return False  
             
     def download_from_file(self):
         """Download various links from a file"""
@@ -859,13 +885,13 @@ class Youtube_Downloader:
                 failed_count += 1
                 continue
             if "playlist" in url.lower():
-                output_template = str(self.__output_directory / "%(playlist)s/%(artist)s - %(title)s.%(ext)s").as_posix()
+                output_template = str(self.__output_directory / "%(playlist)s/%(artist)s - %(title)s.%(ext)s")
                 additional_args = None
             elif "album" in url.lower():
-                output_template = str(self.__output_directory / "%(artist)s/%(album)s/%(artist)s - %(title)s.%(ext)s").as_posix()
+                output_template = str(self.__output_directory / "%(artist)s/%(album)s/%(artist)s - %(title)s.%(ext)s")
                 additional_args = None
             else:
-                output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s").as_posix()
+                output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
                 additional_args = None
             success = False
             for attempt in range(1, MAX_RETRIES + 1):
