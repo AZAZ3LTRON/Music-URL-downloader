@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Interactive Playlist/Album/Track Downloader using yt-dlp
 
@@ -44,89 +43,26 @@ from typing import List, Dict, Optional, Tuple
 import threading
 import json
 from tqdm import tqdm
-from colorama import init, Fore, Back, Style
+from colorama import init, Fore, Style
 
 from CookieManager import CookieManager
 from EnhancedMenu import Enhanced_Menu
+from Logs_Handler import Logs_Manager
 
 init(autoreset=True)
 
 """ =========================================== Pre Config ===========================================
 This part of the pre-configuration of the downloader, it can be change. Each part is explained below:
-* SUCCESS_LOG - Logs the successful downloads (subject to change)
-* FAILED_LOG - Logs failed downloads (subject to change)
-* ERROR_LOG - Logs error in the download process (subject to change)
 * MAX_RETRIES - No of times the downloader can retry on a link (subject to change)
 * RETRY_DELAY - The delay between each retry (subject to change)
 ======================================================================================================= """
-
-LOG_DIR = Path("log")
-
-LOG_DIR = Path("log")
-SUCCESS_LOG = LOG_DIR / "success.log"
-FAILED_LOG  = LOG_DIR / "failed.log"
-ERROR_LOG   = LOG_DIR / "error.log"
-
-# Create directory once
-LOG_DIR.mkdir(exist_ok=True)
 
 MAX_RETRIES = 3
 RETRY_DELAY = 10
 DOWNLOAD_TIMEOUT = 120
 COOKIE_DIRECTORY = r"cookies"
 
-os.makedirs("log", exist_ok=True)
 os.makedirs(COOKIE_DIRECTORY, exist_ok=True)
-
-"""==== Logger: Initialize the log files before write ==== """
-# Basic Logger info
-logger = logging.getLogger("YouTube Downloader")
-log_format = logging.Formatter("YT-DLP %(asctime)s - %(levelname)s - %(funcName)s - %(lineno)d - %(message)s")
-error_format = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-
-success_downloads = logging.getLogger("successful downloads")
-failed_downloads = logging.getLogger("failed downloads")
-error_downloads = logging.getLogger("error in downloads")
-console_logger = logging.getLogger("console")
-
-# Create loggers (successful downloads logger) ----------------------------------------------
-success_downloads.setLevel(logging.INFO)
-success_downloads.propagate = False
-
-# When passing to FileHandler, convert to string
-success_handler = logging.FileHandler(str(SUCCESS_LOG), encoding='utf-8')
-success_handler.setLevel(logging.INFO)
-success_handler.setFormatter(log_format)
-success_downloads.addHandler(success_handler)
-
-# Failed download logger ---------------------------------------------------------------
-failed_downloads.setLevel(logging.INFO)
-failed_downloads.propagate = False
-
-failed_handler = logging.FileHandler(str(FAILED_LOG), encoding='utf-8')
-failed_handler.setLevel(logging.INFO)
-failed_handler.setFormatter(log_format)
-failed_downloads.addHandler(failed_handler)
-
-# Error in download logger ----------------------------------------------------------
-error_downloads.setLevel(logging.INFO)
-error_downloads.propagate = False
-
-error_handler = logging.FileHandler(str(ERROR_LOG), encoding='utf-8')
-error_handler.setLevel(logging.ERROR)
-error_handler.setFormatter(log_format)
-error_downloads.addHandler(error_handler)
-
-# General console logger (stream handler for console output)
-console_logger.setLevel(logging.INFO)
-console_logger.propagate = False
-
-console_stream_handler = logging.StreamHandler()
-console_stream_handler.setLevel(logging.INFO)
-console_stream_handler.setFormatter(log_format)
-console_logger.addHandler(console_stream_handler)
-
-
 
 class Youtube_Downloader:
     """Downloader Class that handles the downloading process"""
@@ -144,6 +80,7 @@ class Youtube_Downloader:
         self.__filepath = r"links/youtube_links.txt"
         self.__configuration_file = r"config/youtube_downloader.json"
         self.cookie_manager = CookieManager()
+        self.log_manager = Logs_Manager()
         self.use_cookies = False
         self.__output_directory.mkdir(parents=True, exist_ok=True)
         Path("links").mkdir(parents=True, exist_ok=True)
@@ -151,7 +88,7 @@ class Youtube_Downloader:
         try:
             self.load_config()
         except Exception as e:
-            self.log_error(f"Error loading config: {e}")
+            self.log_manager.log_error(f"Error loading config: {e}")
 
     # ============================================= Configuration Managers ===========================================
     def load_config(self):
@@ -182,7 +119,7 @@ class Youtube_Downloader:
             if "use_cookies" in config:
                 self.use_cookies = config["use_cookies"]
         except Exception as e:
-            self.log_error(f"Error loading configuration: {e}")
+            self.log_manager.log_error(f"Error loading configuration: {e}")
             self.__output_directory = Path(primary_config["output_directory"])
             self.__audio_quality = primary_config["audio_quality"]
             self.__audio_format = primary_config["audio_format"]
@@ -204,23 +141,7 @@ class Youtube_Downloader:
             with open(self.__configuration_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            self.log_error(f"Error saving configuration: {e}")
-
-    # ============================================= Logger Functions ===========================================
-    def log_success(self, message: str):
-        """Logs only successful downloads (to success log)"""
-        success_downloads.info(message)
-        console_logger.info(f"{Fore.GREEN}{message}{Style.RESET_ALL}")
-
-    def log_failure(self, message: str):
-        """Logs only failed downloads (to failed log)"""
-        failed_downloads.info(message)
-        console_logger.info(f"{Fore.RED}{message}{Style.RESET_ALL}")
-
-    def log_error(self, message: str, exc_info=False):
-        """Logs only error in download process (to error log)"""
-        error_downloads.error(message, exc_info=exc_info)
-        console_logger.info(f"{Fore.YELLOW}{message}{Style.RESET_ALL}")
+            self.log_manager.log_error(f"Error saving configuration: {e}")
 
     #  ============================================= Helper Functions & Resource Validation Functions =============================================
     def get_user_preferences(self):
@@ -241,6 +162,7 @@ class Youtube_Downloader:
                 print("  192k     - Good quality")
                 print("  128k     - Standard quality")
                 print("  8k-160k  - Lower qualities")
+                continue
             valid_bitrates = ["auto", "disable", "8k", "16k", "24k", "32k", "40k", "48k", "64k",
                               "80k", "96k", "112k", "128k", "160k", "192k", "224k", "256k", "320k"]
             if audio_quality_input in valid_bitrates:
@@ -262,6 +184,7 @@ class Youtube_Downloader:
                 print("  opus - Excellent compression")
                 print("  ogg  - Open format")
                 print("  wav  - Uncompressed")
+                continue
             if audio_format_input in ["mp3", "flac", "ogg", "opus", "m4a", "wav"]:
                 self.__audio_format = audio_format_input
                 break
@@ -284,7 +207,7 @@ class Youtube_Downloader:
         cookie_choice = Enhanced_Menu.get_input("Use cookies for authentication? (y/n): ", "yn", default=True)
         if cookie_choice:
             self.use_cookies = True
-            Enhanced_Menu.print_status("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Mnager to help you", "info")
+            Enhanced_Menu.print_status("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Manager to help you", "info")
         else:
             self.use_cookies = False
 
@@ -322,7 +245,7 @@ class Youtube_Downloader:
                 except OSError:
                     pass
         if removed_count > 0:
-            self.log_success("Cleaned up empty directories")
+            self.log_manager.log_success("Cleaned up empty directories")
 
     def extract_youtube_id(self, url: str) -> str:
         """Extract YouTube ID from URL"""
@@ -355,14 +278,21 @@ class Youtube_Downloader:
             # Check on output and get metadata
             if result.returncode == 0:
                 try:
-                    metadata = json.loads(result.stdout)
-                    title = metadata.get('title', 'Unknown')
-                    duration = metadata.get('duration', 0)
-                    if metadata.get('availability') == 'unavailable':
-                        return False, "Video unavailable", metadata
-                    return True, f"Available - {title}", metadata
+                    # Handle multiple JSON lines (for playlists)
+                    metadata = None
+                    for line in result.stdout.strip().split('\n'):
+                        if line:
+                            metadata = json.loads(line)
+                            break
+                    
+                    if metadata:
+                        title = metadata.get('title', 'Unknown')
+                        if metadata.get('availability') == 'unavailable':
+                            return False, "Video unavailable", metadata
+                        return True, f"Available - {title}", metadata
+                    return True, "Music Resource Available", None
                 except json.JSONDecodeError:
-                    return True, "Music Resource Available - Complication in Metadata", None
+                    return True, "Music Resource Available", None
             
             # If result or output contains errors
             else:
@@ -448,9 +378,9 @@ class Youtube_Downloader:
             cookie_args = self.cookie_manager.get_arguments()
             if cookie_args:
                 command.extend(cookie_args)
-                self.log_success("Using cookies from authentication")
+                self.log_manager.log_success("Using cookies from authentication")
             else:
-                self.log_error("Error using cookies")
+                self.log_manager.log_error("Error using cookies")
                 
         # Additional arguments for specific downloads
         if additional_args:
@@ -497,7 +427,7 @@ class Youtube_Downloader:
                             percent = float(percent_match.group(1))
                             progress_bar.set_description(f"{Fore.CYAN}Downloading: {percent:.1f}%{Style.RESET_ALL}")
                         
-                        # Parse possible total download sixe
+                        # Parse possible total download size
                         size_match = re.search(r'of\s+([\d\.]+\s*[KMGT]?i?B)', line)
                         if size_match and progress_bar.total is None:
                             total_str = size_match.group(1)
@@ -543,7 +473,7 @@ class Youtube_Downloader:
             progress_bar.close()
             full_output = "\n".join(output_lines)
             if process.returncode == 0:
-                self.log_success(f"Successfully downloaded: {url}")
+                self.log_manager.log_success(f"Successfully downloaded: {url}")
                 return subprocess.CompletedProcess(
                     args=command,
                     returncode=0,
@@ -567,7 +497,7 @@ class Youtube_Downloader:
                 else:
                     # extract first 200 chars of error
                     error_msg += f" - Error: {full_output[-200:] if full_output else 'Unknown'}"
-                self.log_failure(error_msg)
+                self.log_manager.log_failure(error_msg)
                 raise subprocess.CalledProcessError(
                     process.returncode,
                     command,
@@ -576,11 +506,11 @@ class Youtube_Downloader:
                 )
         except FileNotFoundError:
             error_msg = "yt-dlp not found. Please install it with: pip install yt-dlp"
-            self.log_error(error_msg)
+            self.log_manager.log_error(error_msg)
             raise RuntimeError(error_msg)
         except Exception as e:
             error_msg = f"Unexpected error in run_download: {e}"
-            self.log_error(error_msg)
+            self.log_manager.log_error(error_msg)
             if 'progress_bar' in locals():
                 progress_bar.close()
             raise
@@ -634,8 +564,8 @@ class Youtube_Downloader:
             Enhanced_Menu.print_status("Validating resource...", "info")
             is_valid, message, _ = self.validate_resource(url)
             if not is_valid:
-                Enhanced_Menu.print_status(f"Resource validation failed, Please try a different URL.", "failure")
-                self.log_failure(f"Resource validation failed for {url}: {message}")
+                Enhanced_Menu.print_status(f"Resource validation failed. Please try a different URL.", "failure")
+                self.log_manager.log_failure(f"Resource validation failed for {url}: {message}")
                 continue  
             else:
                 Enhanced_Menu.print_status(f"Resource validated successfully: {message}", "success")
@@ -656,21 +586,21 @@ class Youtube_Downloader:
                 try:
                     result = self.run_download(url, output_template)
                     if result.returncode == 0:
-                        self.log_success(f"Successfully downloaded track: {url}")
+                        self.log_manager.log_success(f"Successfully downloaded track: {url}")
                         successful = True
                         break  # Exit retry loop on success
                         
                 except subprocess.CalledProcessError as e:
                     if attempt < MAX_RETRIES:
-                        self.log_error(f"Attempt {attempt} failed: {e}")
+                        self.log_manager.log_error(f"Attempt {attempt} failed: {e}")
                     else:
-                        self.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
                 except Exception as e:
-                    self.log_error(f"Unexpected error: {e}")
+                    self.log_manager.log_error(f"Unexpected error: {e}")
                     if attempt < MAX_RETRIES:
                         continue
                     else:
-                        self.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
             
             # Handle post-download actions
             if successful:
@@ -713,8 +643,8 @@ class Youtube_Downloader:
             Enhanced_Menu.print_status("Validating resource...", "info")
             is_valid, message, _ = self.validate_resource(url)
             if not is_valid:
-                Enhanced_Menu.print_status(f"Resource validation failed, Please try a different URL.", "failure")
-                self.log_failure(f"Resource validation failed for {url}: {message}")
+                Enhanced_Menu.print_status(f"Resource validation failed. Please try a different URL.", "failure")
+                self.log_manager.log_failure(f"Resource validation failed for {url}: {message}")
                 continue
             else:
                 Enhanced_Menu.print_status(f"Resource validated successfully: {message}", "success")
@@ -734,27 +664,27 @@ class Youtube_Downloader:
                 try:
                     result = self.run_download(url, output_template)
                     if result.returncode == 0:
-                        self.log_success(f"Successfully downloaded album: {url}")
-                        success = True # Signals we want to download another URL
+                        self.log_manager.log_success(f"Successfully downloaded album: {url}")
+                        success = True
                         break # Exit the retry loop
         
                 except subprocess.CalledProcessError as e:
                     if attempt < MAX_RETRIES:
-                        self.log_error(f"Attempt {attempt} failed: {e}")
+                        self.log_manager.log_error(f"Attempt {attempt} failed: {e}")
                     else:
-                        self.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
                 except Exception as e:
-                    self.log_error(f"Unexpected error: {e}")
+                    self.log_manager.log_error(f"Unexpected error: {e}")
                     if attempt < MAX_RETRIES:
                         continue
                     else:
-                        self.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
                         
             # After the for loop:
             if success:
                 time.sleep(0.5) # Pause activity for some time
                 
-                # Ask if user wants to downlaod another album
+                # Ask if user wants to download another album
                 another = Enhanced_Menu.get_input("\nDownload another album? (y/n): ", "yn", default=True)
                 if another:
                     continue  # Go to next iteration of outer while for new URL
@@ -785,13 +715,13 @@ class Youtube_Downloader:
             
             if not self.validate_youtube_url(url):
                 Enhanced_Menu.print_status("Invalid YouTube URL. Enter a valid YouTube/YouTube Music URL", "error")
-                return False
+                continue
             
             Enhanced_Menu.print_status("Validating resource...", "info")
             is_valid, message, _ = self.validate_resource(url)
             if not is_valid:
-                Enhanced_Menu.print_status(f"Resource validation failed, Please try a different URL.", "failure")
-                self.log_failure(f"Resource validation failed for {url}: {message}")
+                Enhanced_Menu.print_status(f"Resource validation failed. Please try a different URL.", "failure")
+                self.log_manager.log_failure(f"Resource validation failed for {url}: {message}")
                 continue
             else:
                 Enhanced_Menu.print_status(f"Resource validated successfully: {message}", "success")
@@ -811,27 +741,27 @@ class Youtube_Downloader:
                 try:
                     result = self.run_download(url, output_template)
                     if result.returncode == 0:
-                        self.log_success(f"Successfully downloaded playlist {url}")
+                        self.log_manager.log_success(f"Successfully downloaded playlist {url}")
                         success = True
                         break 
 
                 except subprocess.CalledProcessError as e:
                     if attempt < MAX_RETRIES:
-                        self.log_error(f"Attempt {attempt} failed: {e}")
+                        self.log_manager.log_error(f"Attempt {attempt} failed: {e}")
                     else:
-                        self.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
                 except Exception as e:
-                    self.log_error(f"Unexpected error: {e}")
+                    self.log_manager.log_error(f"Unexpected error: {e}")
                     if attempt < MAX_RETRIES:
                         continue
                     else:
-                        self.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
                         
             if success:
                 # Clear any pending input
                 time.sleep(0.5)
                 
-                another = Enhanced_Menu.get_input("\nDownload another track? (y/n): ", "yn", default=True)
+                another = Enhanced_Menu.get_input("\nDownload another playlist? (y/n): ", "yn", default=True)
                 if another:
                     continue  
                 else:
@@ -841,16 +771,16 @@ class Youtube_Downloader:
                 if retry:
                     continue 
                 else:
-                    return False  
+                    return False
             
     def download_from_file(self):
         """Download various links from a file"""
         Enhanced_Menu.print_header("Batch Download", "Download from a text file containing links")
-        filepath = Enhanced_Menu.get_input("Enter the directory of the file): ", "str", default=self.__filepath)
+        filepath = Enhanced_Menu.get_input("Enter the directory of the file: ", "str", default=self.__filepath)
         if not filepath:
             filepath = self.__filepath
         if not os.path.exists(filepath):
-            self.log_failure(f"File not found: {filepath}")
+            self.log_manager.log_failure(f"File not found: {filepath}")
             Enhanced_Menu.print_status(f"File not found: {filepath}", "error")
             return False
         self.get_user_preferences()
@@ -858,29 +788,29 @@ class Youtube_Downloader:
             with open(filepath, 'r', encoding='utf-8') as file:
                 file_lines = [line.rstrip() for line in file if line.strip()]
         except FileNotFoundError:
-            self.log_failure(f"File not found: {filepath}")
+            self.log_manager.log_failure(f"File not found: {filepath}")
             return False
         except Exception as e:
-            self.log_failure(f"Error reading the file: {e}")
+            self.log_manager.log_failure(f"Error reading the file: {e}")
             return False
         if not file_lines:
-            self.log_failure("No URLs found in the text file")
+            self.log_manager.log_failure("No URLs found in the text file")
             return False
         Enhanced_Menu.print_status(f"Found {len(file_lines)} URLs to process", "info")
         success_count = 0
         failed_count = 0
         for i, url in enumerate(file_lines, 1):
             print("=" * 50)
-            self.log_success(f"Processing URL {i}/{len(file_lines)}: {url}")
+            self.log_manager.log_info(f"Processing URL {i}/{len(file_lines)}: {url}")
             clean_url = url.split('#')[0].strip()
             if "# DOWNLOADED" in url:
-                self.log_success(f"Skipping already downloaded URL: {clean_url}")
+                self.log_manager.log_success(f"Skipping already downloaded URL: {clean_url}")
                 success_count += 1
                 continue
             print("Validating URL...")
             is_valid, message, _ = self.validate_resource(clean_url)
             if not is_valid:
-                self.log_failure(f"URL validation failed: {clean_url} - {message}")
+                self.log_manager.log_failure(f"URL validation failed: {clean_url} - {message}")
                 file_lines[i - 1] = f"{clean_url} # VALIDATION_FAILED: {message}"
                 failed_count += 1
                 continue
@@ -908,14 +838,14 @@ class Youtube_Downloader:
                 except subprocess.CalledProcessError as e:
                     if attempt < MAX_RETRIES:
                         error_msg = f"Download failed (attempt {attempt}/{MAX_RETRIES}). Error: {e}"
-                        self.log_error(error_msg)
+                        self.log_manager.log_error(error_msg)
                     else:
-                        self.log_failure(f"Failed after {MAX_RETRIES} attempts: {clean_url}")
+                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {clean_url}")
                 except Exception as e:
-                    self.log_failure(f"Exception during download: {e}")
+                    self.log_manager.log_failure(f"Exception during download: {e}")
             if success:
                 success_count += 1
-                self.log_success(f"Successfully downloaded {clean_url}")
+                self.log_manager.log_success(f"Successfully downloaded {clean_url}")
                 if "#" in url:
                     parts = url.split('#')
                     file_lines[i - 1] = f"{parts[0].strip()} # DOWNLOADED"
@@ -923,7 +853,7 @@ class Youtube_Downloader:
                     file_lines[i - 1] = f"{clean_url} # DOWNLOADED"
             else:
                 failed_count += 1
-                self.log_failure(f"Failed to download {clean_url}")
+                self.log_manager.log_failure(f"Failed to download {clean_url}")
                 if "#" in url:
                     parts = url.split('#')
                     file_lines[i - 1] = f"{parts[0].strip()} # FAILED"
@@ -933,7 +863,7 @@ class Youtube_Downloader:
             with open(filepath, 'w', encoding='utf-8') as file:
                 file.write("\n".join(file_lines))
         except Exception as e:
-            self.log_failure(f"Error updating the file: {e}")
+            self.log_manager.log_failure(f"Error updating the file: {e}")
         print("\n" + "=" * 50)
         Enhanced_Menu.print_header("Download Summary:")
         Enhanced_Menu.print_status(f"Successfully downloaded: {success_count}", "success")
@@ -963,11 +893,11 @@ class Youtube_Downloader:
             try:
                 result = self.run_download(f"ytsearch1:{song_query}", output_template)
                 elapsed_time = time.time() - search_time
-                self.log_success(f"Successfully downloaded: '{song_query}' in {elapsed_time:.1f} seconds!")
+                self.log_manager.log_success(f"Successfully downloaded: '{song_query}' in {elapsed_time:.1f} seconds!")
                 print("=" * 50)
                 return True
             except Exception as e:
-                self.log_error(f"Unexpected error: {e}")
+                self.log_manager.log_error(f"Unexpected error: {e}")
                 if attempt < MAX_RETRIES:
                     continue
                 else:
@@ -1013,18 +943,18 @@ class Youtube_Downloader:
                 result = self.run_download(channel_url, output_template, additional_args)
                 if result.returncode == 0:
                     elapsed_time = time.time() - start_time
-                    self.log_success(f"Successfully downloaded channel in {elapsed_time:.1f} seconds!")
+                    self.log_manager.log_success(f"Successfully downloaded channel in {elapsed_time:.1f} seconds!")
                     print("=" * 50)
                     return True
             except subprocess.CalledProcessError as e:
                 if attempt < MAX_RETRIES:
                     error_msg = f"Download failed (attempt {attempt}/{MAX_RETRIES}). Error: {e}"
-                    self.log_error(error_msg)
+                    self.log_manager.log_error(error_msg)
                 else:
-                    self.log_failure(f"Failed to download after {MAX_RETRIES} attempts: {channel_url}")
+                    self.log_manager.log_failure(f"Failed to download after {MAX_RETRIES} attempts: {channel_url}")
                     return False
             except Exception as e:
-                self.log_error(f"Unexpected error: {e}")
+                self.log_manager.log_error(f"Unexpected error: {e}")
                 if attempt < MAX_RETRIES:
                     continue
                 else:
@@ -1150,7 +1080,7 @@ class Youtube_Downloader:
             try:
                 __import__(package_name)
             except ImportError:
-                Enhanced_Menu.print_color(f"Installing {package_name}....")
+                print(f"Installing {package_name}....")
                 subprocess.check_call([sys.executable, "-m", "pip", "install"] + packages)
 
     def troubleshooting(self):
@@ -1159,7 +1089,7 @@ class Youtube_Downloader:
         Enhanced_Menu.print_header("TROUBLESHOOTING", "")
         print("=" * 50)
         print("Hello, this troubleshooter is to help if you're experiencing problem in the program")
-        print("Running a simple daignostic. This might take a while.....")
+        print("Running a simple diagnostic. This might take a while.....")
         
         # Step 1: Check if yt-dlp is installed
         Enhanced_Menu.print_status("1. Checking yt-dlp installation...", "info")
@@ -1193,9 +1123,9 @@ class Youtube_Downloader:
         except Exception as e:
             Enhanced_Menu.print_status(f"Test failed: {e}", "error")
         
-        # Check directories if the exist
+        # Check directories if they exist
         Enhanced_Menu.print_status("\n4. Checking directories...", "info")
-        directories = ["log", "Albums", "links", "cookies"]
+        directories = ["logs", "Albums", "links", "cookies"]
         for directory in directories:
             if os.path.exists(directory):
                 Enhanced_Menu.print_status(f"{directory}/ exists", "success")
@@ -1268,7 +1198,7 @@ def main():
     print(f"{Fore.YELLOW}{Style.BRIGHT}YouTube Music Downloader{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}Initializing...{Style.RESET_ALL}")
 
-    directories = ["log", "Albums", "links", "cookies"]
+    directories = ["logs", "Albums", "links", "cookies"]
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
         print(f"{Fore.GREEN}✓{Style.RESET_ALL} Directory '{directory}/' ready")
@@ -1453,20 +1383,22 @@ def main():
             if choice != 8:
                 input(f"\n{Fore.CYAN}Press Enter to continue...{Style.RESET_ALL}")
 
+    # Define actions as lambdas to ensure they're called only when selected
     actions = {
-        1: downloader.download_track,
-        2: downloader.download_album,
-        3: downloader.download_playlist,
-        4: downloader.download_from_file,
-        5: downloader.search_a_song,
-        6: downloader.download_channel,
-        7: downloader.manage_cookies,
-        8: downloader.check_dependencies,
-        9: handle_settings,
+        1: lambda: downloader.download_track(),
+        2: lambda: downloader.download_album(),
+        3: lambda: downloader.download_playlist(),
+        4: lambda: downloader.download_from_file(),
+        5: lambda: downloader.search_a_song(),
+        6: lambda: downloader.download_channel(),
+        7: lambda: downloader.manage_cookies(),
+        8: lambda: downloader.check_dependencies(),
+        9: lambda: handle_settings(),
         10: lambda: Youtube_Downloader.program_info(),
-        11: downloader.troubleshooting,
+        11: lambda: downloader.troubleshooting(),
         12: lambda: Youtube_Downloader.show_ytdlp_help(),
-        13: handle_exit
+        13: lambda: downloader.log_manager.interactive_menu(),
+        14: lambda: handle_exit()
     }
 
     while True:
@@ -1491,8 +1423,11 @@ def main():
             Enhanced_Menu.print_menu_item(11, "Troubleshooting")
             Enhanced_Menu.print_menu_item(12, "Show yt-dlp Help")
             
+            Enhanced_Menu.print_section("📊 LOG MANAGEMENT")
+            Enhanced_Menu.print_menu_item(13, "Log Manager")
+            
             Enhanced_Menu.print_section("🚪 EXIT")
-            Enhanced_Menu.print_menu_item(13, "Exit Program")
+            Enhanced_Menu.print_menu_item(14, "Exit Program")
             print(f"\n{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
             Enhanced_Menu.print_status("Current Settings:", "info", "⚙️")
             settings = [
@@ -1506,13 +1441,18 @@ def main():
             cookie_color = Fore.GREEN if downloader.use_cookies else Fore.YELLOW
             print(f"  {Fore.CYAN}Cookies:{Style.RESET_ALL} {cookie_color}{cookie_status}{Style.RESET_ALL}")
             print(f"{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
-            choice = Enhanced_Menu.get_input("\nEnter your choice (1-13)", "int", 1, 13)
+            
+            choice = Enhanced_Menu.get_input("\nEnter your choice (1-14)", "int", 1, 14)
             action = actions.get(choice)
+            
             if action:
                 Enhanced_Menu.clear_screen()
                 try:
-                    success = action()
-                    if success is False and choice not in [8, 10, 11, 12, 13]:
+                    # Call the lambda function
+                    result = action()
+                    
+                    # Handle the result if needed
+                    if result is False and choice not in [8, 10, 11, 12, 13, 14]:
                         print()
                         retry = Enhanced_Menu.get_input("Operation failed. Try again? (y/n)", "yn", default=True)
                         if retry:
@@ -1521,10 +1461,12 @@ def main():
                     Enhanced_Menu.print_status("Operation cancelled", "warning")
                 except Exception as e:
                     Enhanced_Menu.print_status(f"Error: {e}", "error")
-                    downloader.log_error(f"Menu option {choice} error: {e}", exc_info=True)
+                    import traceback
+                    traceback.print_exc()
             else:
                 Enhanced_Menu.print_status("Invalid option", "error")
-            if choice != 13:
+                
+            if choice != 14:
                 print()
                 cont = Enhanced_Menu.get_input("Return to main menu? (y/n)", "yn", default=True)
                 if not cont:
@@ -1534,6 +1476,8 @@ def main():
             handle_exit()
         except Exception as e:
             Enhanced_Menu.print_status(f"Unexpected error: {e}", "error")
+            import traceback
+            traceback.print_exc()
             if Enhanced_Menu.get_input("Continue? (y/n)", "yn", default=True):
                 continue
             else:
