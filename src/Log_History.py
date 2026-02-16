@@ -24,7 +24,7 @@ init(autoreset=True)
 class Log_History:
     """ Log Manager and history viewer for the Downlaoder"""
     def __init__(self):
-        self.log_dir = Path("log")
+        self.log_dir = Path("logs")
         self.log_dir.mkdir(exist_ok=True)
         
         # Define log file paths
@@ -145,4 +145,52 @@ class Log_History:
                 
             return stats
         
-    def get_common_errors(self)
+    def get_common_errors(self, limit: int = 7):
+        """ Get the most common error message that occur in the program"""
+        error_patterns = {}
+        
+        # Check if error logs exist
+        if not self.error_log.exists():
+            return []
+        
+        # Open error logs and extract error messages
+        try:
+            with open(self.error_log, 'r', econding='utf-8') as f:
+                for line in f:
+                    error_match = re.search(r'ERROR - (.+?)(?:\d0+|$)', line) # Check 
+                    if error_match:
+                        error_message = error_match.group(1).strip()
+                        
+                        # Normalize error message (remove variable parts from line)
+                        error_message = re.sub(r'\d+', '#', error_message)
+                        error_patterns[error_message] = error_patterns.get(error_message, 0)
+        
+        except Exception as e:
+            self.log_error(f"Error analyzing error log: {e}", console=False)
+            
+        # Sort by occurence frequency and return top errors
+        sorted_errors = sorted(error_patterns.items(), key=lambda x: x[1], reverse=True)
+        return sorted_errors[:limit]
+    
+    
+    # =============== Display Methods ======================
+    
+    def display_log(self, log_type: str, title: str = None, color: str = None):
+        """ Display records from log file with formatting"""
+        
+        # Dictionary stores tuples of
+        log_files = {
+            'success': (self.success_log, 'Successful downloads', self.color_map['success']),
+            'failed': (self.failed_log, 'Failed downloads', self.color_map['failed']),
+            'error': (self.error_log, 'Error Logs', self.color_map['error']),
+            'all': (None, ' All Logs', Fore.WHITE)
+        }
+        
+        log_type = Enhanced_Menu.get_input("What logs would do wish to view:- ")
+        
+        # The user input must be in the dictionary
+        if log_type not in log_files:
+            Enhanced_Menu.print_status("Invalid log type. Enter a valid log type", "error")
+            return
+        
+        log_file
