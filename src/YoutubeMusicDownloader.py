@@ -84,7 +84,6 @@ class Youtube_Downloader:
         self.use_cookies = False
         self.__output_directory.mkdir(parents=True, exist_ok=True)
         Path("links").mkdir(parents=True, exist_ok=True)
-        Path("log").mkdir(parents=True, exist_ok=True)
         try:
             self.load_config()
         except Exception as e:
@@ -1125,7 +1124,7 @@ class Youtube_Downloader:
         
         # Check directories if they exist
         Enhanced_Menu.print_status("\n4. Checking directories...", "info")
-        directories = ["logs", "Albums", "links", "cookies"]
+        directories = ["Albums", "links", "cookies"]
         for directory in directories:
             if os.path.exists(directory):
                 Enhanced_Menu.print_status(f"{directory}/ exists", "success")
@@ -1198,7 +1197,7 @@ def main():
     print(f"{Fore.YELLOW}{Style.BRIGHT}YouTube Music Downloader{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}Initializing...{Style.RESET_ALL}")
 
-    directories = ["logs", "Albums", "links", "cookies"]
+    directories = ["Albums", "links", "cookies"]
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
         print(f"{Fore.GREEN}✓{Style.RESET_ALL} Directory '{directory}/' ready")
