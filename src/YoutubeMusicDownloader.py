@@ -535,340 +535,306 @@ class Youtube_Downloader:
         return decorator
 
     #  ============================================= Main Download functions =============================================
-    @rate_limit(calls_per_minute=30)
-    def download_track(self):
-        """Download a single track (same syntax for most download functions)"""
+    def _download_item(self, item_type: str, url_prompt: str, output_template: str, additional_args: list = None, confirm_large: bool = False):
+        """Unified download function for tracks, albums, and playlists"""
         while True:
             print("\n" + "=" * 55)
             Enhanced_Menu.clear_screen()
-            Enhanced_Menu.print_header("Track Download")
-            url = Enhanced_Menu.get_input("Enter YouTube Music URL (or 'back' to return)", "str")
+            Enhanced_Menu.print_header(f"Download {item_type.title()}")
             
-            # Back to menu
+            # Get URL from user
+            url = Enhanced_Menu.get_input(f"Enter YouTube Music {url_prompt} (or 'back' to return)", "str")
             if url.lower() == 'back':
                 return False
             
-            # Go back and ask for URL again
             if not url:
                 Enhanced_Menu.print_status("No URL provided", "error")
                 continue
             
-            # Check if url is a valid youtube url
+            # Validate URL format
             if not self.validate_youtube_url(url):
                 Enhanced_Menu.print_status("Invalid YouTube URL. Enter a valid YouTube/YouTube Music URL", "error")
                 continue
             
-            # Checks for internet connection and if resource is valid
+            # Validate resource availability
             Enhanced_Menu.print_status("Validating resource...", "info")
-            is_valid, message, _ = self.validate_resource(url)
+            is_valid, message, metadata = self.validate_resource(url)
+            
             if not is_valid:
-                Enhanced_Menu.print_status(f"Resource validation failed. Please try a different URL.", "failure")
+                Enhanced_Menu.print_status(f"Resource validation failed: {message}", "failure")
                 self.log_manager.log_failure(f"Resource validation failed for {url}: {message}")
-                continue  
+                continue
             else:
-                Enhanced_Menu.print_status(f"Resource validated successfully: {message}", "success")
-        
-            # Get user preferences, if not use default config 
+                Enhanced_Menu.print_status(f"Resource validated: {message}", "success")
+                
+                # For large playlists/albums, show count and ask for confirmation
+                if confirm_large and metadata:
+                    if 'playlist_count' in metadata:
+                        count = metadata['playlist_count']
+                        if count > 50:  # Arbitrary threshold
+                            Enhanced_Menu.print_status(
+                                f"This {item_type} contains {count} items. This may take a while.", 
+                                "warning"
+                            )
+                            if not Enhanced_Menu.get_input("Continue with download? (y/n)", "yn", default=False):
+                                Enhanced_Menu.print_status("Download cancelled", "info")
+                                continue
+            
+            # Get user preferences if they want to configure
             if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
                 self.get_user_preferences()
-                
-            Enhanced_Menu.print_status(f"Starting Track download: {url}. This may take a few minutes...", "info")
-            output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
             
-            successful = False
-            for attempt in range(1, MAX_RETRIES + 1):
-                Enhanced_Menu.print_section(f"Downloading Track")
-                if attempt > 1:
-                    print(f"Waiting {RETRY_DELAY} seconds before retry...")
-                    time.sleep(RETRY_DELAY)
-                try:
-                    result = self.run_download(url, output_template)
-                    if result.returncode == 0:
-                        self.log_manager.log_success(f"Successfully downloaded track: {url}")
-                        successful = True
-                        break  # Exit retry loop on success
-                        
-                except subprocess.CalledProcessError as e:
-                    if attempt < MAX_RETRIES:
-                        self.log_manager.log_error(f"Attempt {attempt} failed: {e}")
-                    else:
-                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
-                except Exception as e:
-                    self.log_manager.log_error(f"Unexpected error: {e}")
-                    if attempt < MAX_RETRIES:
-                        continue
-                    else:
-                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+            # Confirm settings before download
+            Enhanced_Menu.print_section("Download Settings")
+            print(f"  • Type: {Fore.CYAN}{item_type.title()}{Style.RESET_ALL}")
+            print(f"  • Format: {Fore.CYAN}{self.__audio_format}{Style.RESET_ALL}")
+            print(f"  • Quality: {Fore.CYAN}{self.__audio_quality}{Style.RESET_ALL}")
+            print(f"  • Output: {Fore.CYAN}{self.__output_directory}{Style.RESET_ALL}")
+            print()
             
-            # Handle post-download actions
-            if successful:
-                # Clear any pending input
-                time.sleep(0.5)  # Small delay to ensure clean input buffer
+            if not Enhanced_Menu.get_input("Proceed with download? (y/n)", "yn", default=True):
+                Enhanced_Menu.print_status("Download cancelled", "info")
+                continue
+            
+            Enhanced_Menu.print_status(f"Starting {item_type} download...", "info")
+            
+            # Attempt download with retries
+            success = self._download_with_retry(url, output_template, additional_args, item_type)
+            
+            if success:
+                time.sleep(0.5)  # Small delay for clean UI
                 
                 # Ask if user wants to download another
-                another = Enhanced_Menu.get_input("\nDownload another track? (y/n): ", "yn", default=True)
+                another = Enhanced_Menu.get_input(
+                    f"\nDownload another {item_type}? (y/n): ", 
+                    "yn", 
+                    default=True
+                )
                 if another:
-                    continue  # Go to next iteration of outer while for new URL
+                    continue
                 else:
-                    return True  # Return to main menu
+                    return True
             else:
                 # Download failed after all retries
-                retry = Enhanced_Menu.get_input("\nDownload failed. Try another URL? (y/n): ", "yn", default=True)
+                retry = Enhanced_Menu.get_input(
+                    f"\nDownload failed. Try another {item_type}? (y/n): ", 
+                    "yn", 
+                    default=True
+                )
                 if retry:
-                    continue  # Try another URL
-                else:
-                    return False  # Return to main menu
-            
-    @rate_limit(calls_per_minute=30)
-    def download_album(self):
-        """Download an album"""
-        while True:
-            print("\n" + "=" * 50)
-            Enhanced_Menu.clear_screen()
-            Enhanced_Menu.print_header("Album Download")
-            url = Enhanced_Menu.get_input("Enter YouTube Music album URL (or 'back' to return to menu): ", "str")
-            if url.lower() == 'back':
-                return False
-            
-            if not url:
-                print("No URL provided")
-                continue
-            
-            if not self.validate_youtube_url(url):
-                print("Invalid YouTube URL. Please enter a valid YouTube Music URL")
-                continue
-            
-            Enhanced_Menu.print_status("Validating resource...", "info")
-            is_valid, message, _ = self.validate_resource(url)
-            if not is_valid:
-                Enhanced_Menu.print_status(f"Resource validation failed. Please try a different URL.", "failure")
-                self.log_manager.log_failure(f"Resource validation failed for {url}: {message}")
-                continue
-            else:
-                Enhanced_Menu.print_status(f"Resource validated successfully: {message}", "success")
-
-            if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
-                self.get_user_preferences()
-                
-            Enhanced_Menu.print_status(f"Starting Album download: {url}. This may take a few minutes...", "info")
-            output_template = str(self.__output_directory / "%(artist)s/%(album)s/%(artist)s - %(title)s.%(ext)s")
-            
-            success = False
-            for attempt in range(1, MAX_RETRIES + 1):
-                Enhanced_Menu.print_status(f"Downloading Album...", "info")
-                if attempt > 1:
-                    print(f"Waiting {RETRY_DELAY} seconds before retry...")
-                    time.sleep(RETRY_DELAY)
-                try:
-                    result = self.run_download(url, output_template)
-                    if result.returncode == 0:
-                        self.log_manager.log_success(f"Successfully downloaded album: {url}")
-                        success = True
-                        break # Exit the retry loop
-        
-                except subprocess.CalledProcessError as e:
-                    if attempt < MAX_RETRIES:
-                        self.log_manager.log_error(f"Attempt {attempt} failed: {e}")
-                    else:
-                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
-                except Exception as e:
-                    self.log_manager.log_error(f"Unexpected error: {e}")
-                    if attempt < MAX_RETRIES:
-                        continue
-                    else:
-                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
-                        
-            # After the for loop:
-            if success:
-                time.sleep(0.5) # Pause activity for some time
-                
-                # Ask if user wants to download another album
-                another = Enhanced_Menu.get_input("\nDownload another album? (y/n): ", "yn", default=True)
-                if another:
-                    continue  # Go to next iteration of outer while for new URL
-                else:
-                    return True  # Return to main menu
-            else:
-                # Download failed after all retries
-                retry = Enhanced_Menu.get_input("\nDownload failed. Try another URL? (y/n): ", "yn", default=True)
-                if retry:
-                    continue  # Try another URL
-                else:
-                    return False  # Return to main menu
-                
-    @rate_limit(calls_per_minute=30)
-    def download_playlist(self):
-        """Download a playlist"""
-        while True:
-            print("\n" + "=" * 55)
-            Enhanced_Menu.clear_screen()
-            Enhanced_Menu.print_header("Download Playlist")
-            url = Enhanced_Menu.get_input("Enter YouTube Music URL (or 'back' to return)", "str")
-            if url.lower() == 'back':
-                return False
-            
-            if not url:
-                Enhanced_Menu.print_status("No URL provided", "error")
-                continue
-            
-            if not self.validate_youtube_url(url):
-                Enhanced_Menu.print_status("Invalid YouTube URL. Enter a valid YouTube/YouTube Music URL", "error")
-                continue
-            
-            Enhanced_Menu.print_status("Validating resource...", "info")
-            is_valid, message, _ = self.validate_resource(url)
-            if not is_valid:
-                Enhanced_Menu.print_status(f"Resource validation failed. Please try a different URL.", "failure")
-                self.log_manager.log_failure(f"Resource validation failed for {url}: {message}")
-                continue
-            else:
-                Enhanced_Menu.print_status(f"Resource validated successfully: {message}", "success")
-    
-            if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
-                self.get_user_preferences()
-                
-            Enhanced_Menu.print_status(f"Starting Playlist download: {url}. This may take a few minutes...", "info")
-            output_template = str(self.__output_directory / "%(playlist)s/%(artist)s - %(title)s.%(ext)s")
-            
-            success = False
-            for attempt in range(1, MAX_RETRIES + 1):
-                Enhanced_Menu.print_status(f"Downloading Playlist", "info")
-                if attempt > 1:
-                    print(f"Waiting {RETRY_DELAY} seconds before retry...")
-                    time.sleep(RETRY_DELAY)
-                try:
-                    result = self.run_download(url, output_template)
-                    if result.returncode == 0:
-                        self.log_manager.log_success(f"Successfully downloaded playlist {url}")
-                        success = True
-                        break 
-
-                except subprocess.CalledProcessError as e:
-                    if attempt < MAX_RETRIES:
-                        self.log_manager.log_error(f"Attempt {attempt} failed: {e}")
-                    else:
-                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
-                except Exception as e:
-                    self.log_manager.log_error(f"Unexpected error: {e}")
-                    if attempt < MAX_RETRIES:
-                        continue
-                    else:
-                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
-                        
-            if success:
-                # Clear any pending input
-                time.sleep(0.5)
-                
-                another = Enhanced_Menu.get_input("\nDownload another playlist? (y/n): ", "yn", default=True)
-                if another:
-                    continue  
-                else:
-                    return True  
-            else:
-                retry = Enhanced_Menu.get_input("\nDownload failed. Try another URL? (y/n): ", "yn", default=True)
-                if retry:
-                    continue 
+                    continue
                 else:
                     return False
+
+    def _download_with_retry(self, url: str, output_template: str, additional_args: list = None, item_type: str = "item") -> bool:
+        """Unified retry logic for downloads"""
+        for attempt in range(1, MAX_RETRIES + 1):
+            Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{MAX_RETRIES})")
             
+            if attempt > 1:
+                print(f"Waiting {RETRY_DELAY} seconds before retry...")
+                time.sleep(RETRY_DELAY)
+            
+            try:
+                result = self.run_download(url, output_template, additional_args)
+                
+                # Check if download was successful
+                if result and result.returncode == 0:
+                    self.log_manager.log_success(f"Successfully downloaded {item_type}: {url}")
+                    
+                    # Clean up empty directories after successful download
+                    if item_type in ['album', 'playlist']:
+                        self.cleanup_directory()
+                    
+                    return True
+                else:
+                    # This shouldn't happen if run_download raises on error, but just in case
+                    raise subprocess.CalledProcessError(
+                        result.returncode if result else -1,
+                        f"yt-dlp {url}",
+                        output=result.stdout if result else "",
+                        stderr=result.stderr if result else ""
+                    )
+                    
+            except subprocess.CalledProcessError as e:
+                error_msg = str(e)
+                if attempt < MAX_RETRIES:
+                    self.log_manager.log_error(f"Attempt {attempt} failed for {item_type}: {error_msg[:100]}")
+                else:
+                    self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+                    
+            except Exception as e:
+                self.log_manager.log_error(f"Unexpected error in attempt {attempt}: {e}")
+                if attempt == MAX_RETRIES:
+                    self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+        
+        return False
+
+    # Replace the original functions with simplified versions
+    def download_track(self):
+        """Download a single track"""
+        return self._download_item(
+            item_type="track",
+            url_prompt="track URL",
+            output_template=str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s"),
+            confirm_large=False
+        )
+
+    def download_album(self):
+        """Download an album"""
+        return self._download_item(
+            item_type="album",
+            url_prompt="album URL",
+            output_template=str(self.__output_directory / "%(artist)s/%(album)s/%(artist)s - %(title)s.%(ext)s"),
+            confirm_large=True
+        )
+
+    def download_playlist(self):
+        """Download a playlist"""
+        return self._download_item(
+            item_type="playlist",
+            url_prompt="playlist URL",
+            output_template=str(self.__output_directory / "%(playlist)s/%(artist)s - %(title)s.%(ext)s"),
+            confirm_large=True,
+            additional_args=["--yes-playlist"]  # Ensure playlist is downloaded fully
+        )
+
+    # Also update download_channel to use the unified retry logic
+    def download_channel(self):
+        """Download all videos from a YouTube channel"""
+        print("\n" + "=" * 50)
+        Enhanced_Menu.print_header("Channel Download")
+        print("=" * 50)
+        Enhanced_Menu.print_status("Warning: This may download many videos", "error")
+        Enhanced_Menu.print_status("It could take a long time and use significant disk space", "error")
+        print("=" * 50)
+        
+        channel_url = Enhanced_Menu.get_input("Enter YouTube channel URL: ", "str")
+        if not channel_url:
+            print("No URL provided")
+            return False
+        
+        if not self.validate_youtube_url(channel_url):
+            Enhanced_Menu.print_status("Invalid YouTube URL. Please enter a valid YouTube channel URL", "error")
+            return False
+        
+        # Check if it's a channel (not a video/playlist)
+        if "/watch?" in channel_url or "/playlist?" in channel_url:
+            Enhanced_Menu.print_status("This doesn't appear to be a channel URL", "error")
+            return False
+        
+        confirm = Enhanced_Menu.get_input("Are you sure you want to download ALL videos from this channel? (y/n)", "yn", default=False)
+        if not confirm:
+            Enhanced_Menu.print_status("Channel download cancelled", "info")
+            return False
+        
+        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+            self.get_user_preferences()
+        
+        print(f"Starting Channel download. This may take a VERY long time...")
+        
+        output_template = str(self.__output_directory / "%(channel)s/%(artist)s - %(title)s.%(ext)s")
+        additional_args = [
+            "--yes-playlist",
+            "--download-archive", "downloaded_channels.txt"
+        ]
+        
+        return self._download_with_retry(channel_url, output_template, additional_args, "channel")
+
+    # Update download_from_file to use unified retry
     def download_from_file(self):
         """Download various links from a file"""
         Enhanced_Menu.print_header("Batch Download", "Download from a text file containing links")
+        
         filepath = Enhanced_Menu.get_input("Enter the directory of the file: ", "str", default=self.__filepath)
         if not filepath:
             filepath = self.__filepath
+            
         if not os.path.exists(filepath):
             self.log_manager.log_failure(f"File not found: {filepath}")
             Enhanced_Menu.print_status(f"File not found: {filepath}", "error")
             return False
+        
         self.get_user_preferences()
+        
         try:
             with open(filepath, 'r', encoding='utf-8') as file:
                 file_lines = [line.rstrip() for line in file if line.strip()]
-        except FileNotFoundError:
-            self.log_manager.log_failure(f"File not found: {filepath}")
-            return False
         except Exception as e:
             self.log_manager.log_failure(f"Error reading the file: {e}")
             return False
+        
         if not file_lines:
             self.log_manager.log_failure("No URLs found in the text file")
             return False
+        
         Enhanced_Menu.print_status(f"Found {len(file_lines)} URLs to process", "info")
+        
         success_count = 0
         failed_count = 0
-        for i, url in enumerate(file_lines, 1):
-            print("=" * 50)
-            self.log_manager.log_info(f"Processing URL {i}/{len(file_lines)}: {url}")
-            clean_url = url.split('#')[0].strip()
-            if "# DOWNLOADED" in url:
-                self.log_manager.log_success(f"Skipping already downloaded URL: {clean_url}")
-                success_count += 1
-                continue
-            print("Validating URL...")
-            is_valid, message, _ = self.validate_resource(clean_url)
-            if not is_valid:
-                self.log_manager.log_failure(f"URL validation failed: {clean_url} - {message}")
-                file_lines[i - 1] = f"{clean_url} # VALIDATION_FAILED: {message}"
-                failed_count += 1
-                continue
-            if "playlist" in url.lower():
-                output_template = str(self.__output_directory / "%(playlist)s/%(artist)s - %(title)s.%(ext)s")
-                additional_args = None
-            elif "album" in url.lower():
-                output_template = str(self.__output_directory / "%(artist)s/%(album)s/%(artist)s - %(title)s.%(ext)s")
-                additional_args = None
-            else:
-                output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
-                additional_args = None
-            success = False
-            for attempt in range(1, MAX_RETRIES + 1):
-                print("=" * 50)
-                Enhanced_Menu.print_status(f"Attempt {attempt} for URL {i}", "info")
-                if attempt > 1:
-                    print(f"Waiting {RETRY_DELAY} seconds before retry...")
-                    time.sleep(RETRY_DELAY)
-                try:
-                    result = self.run_download(clean_url, output_template, additional_args)
-                    if result.returncode == 0:
-                        success = True
-                        break
-                except subprocess.CalledProcessError as e:
-                    if attempt < MAX_RETRIES:
-                        error_msg = f"Download failed (attempt {attempt}/{MAX_RETRIES}). Error: {e}"
-                        self.log_manager.log_error(error_msg)
-                    else:
-                        self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {clean_url}")
-                except Exception as e:
-                    self.log_manager.log_failure(f"Exception during download: {e}")
-            if success:
-                success_count += 1
-                self.log_manager.log_success(f"Successfully downloaded {clean_url}")
-                if "#" in url:
-                    parts = url.split('#')
-                    file_lines[i - 1] = f"{parts[0].strip()} # DOWNLOADED"
+        
+        # Create progress bar for batch download
+        with tqdm(total=len(file_lines), desc="Batch Progress", unit="items") as pbar:
+            for i, url in enumerate(file_lines, 1):
+                pbar.set_description(f"Processing {i}/{len(file_lines)}")
+                
+                clean_url = url.split('#')[0].strip()
+                
+                # Skip already downloaded items
+                if "# DOWNLOADED" in url:
+                    self.log_manager.log_success(f"Skipping already downloaded: {clean_url}")
+                    success_count += 1
+                    pbar.update(1)
+                    continue
+                
+                # Validate URL
+                print("\nValidating URL...")
+                is_valid, message, metadata = self.validate_resource(clean_url)
+                if not is_valid:
+                    self.log_manager.log_failure(f"URL validation failed: {clean_url} - {message}")
+                    file_lines[i - 1] = f"{clean_url} # VALIDATION_FAILED: {message}"
+                    failed_count += 1
+                    pbar.update(1)
+                    continue
+                
+                # Determine output template based on URL type
+                if "playlist" in clean_url.lower():
+                    output_template = str(self.__output_directory / "%(playlist)s/%(artist)s - %(title)s.%(ext)s")
+                elif "album" in clean_url.lower():
+                    output_template = str(self.__output_directory / "%(artist)s/%(album)s/%(artist)s - %(title)s.%(ext)s")
                 else:
+                    output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
+                
+                # Download with retry
+                success = self._download_with_retry(clean_url, output_template, None, "URL")
+                
+                if success:
+                    success_count += 1
+                    self.log_manager.log_success(f"Downloaded {clean_url}")
                     file_lines[i - 1] = f"{clean_url} # DOWNLOADED"
-            else:
-                failed_count += 1
-                self.log_manager.log_failure(f"Failed to download {clean_url}")
-                if "#" in url:
-                    parts = url.split('#')
-                    file_lines[i - 1] = f"{parts[0].strip()} # FAILED"
                 else:
+                    failed_count += 1
+                    self.log_manager.log_failure(f"Failed to download {clean_url}")
                     file_lines[i - 1] = f"{clean_url} # FAILED"
+                
+                pbar.update(1)
+        
+        # Update the file with status comments
         try:
             with open(filepath, 'w', encoding='utf-8') as file:
                 file.write("\n".join(file_lines))
         except Exception as e:
             self.log_manager.log_failure(f"Error updating the file: {e}")
+        
+        # Print summary
         print("\n" + "=" * 50)
         Enhanced_Menu.print_header("Download Summary:")
         Enhanced_Menu.print_status(f"Successfully downloaded: {success_count}", "success")
         Enhanced_Menu.print_status(f"Failed: {failed_count}", "failure")
         print("=" * 50)
+        
         return failed_count == 0
-
+    
     @rate_limit(calls_per_minute=30)
     def search_a_song(self):
         """Search for a song and download it"""
@@ -893,63 +859,6 @@ class Youtube_Downloader:
                 self.log_manager.log_success(f"Successfully downloaded: '{song_query}'")
                 print("=" * 50)
                 return True
-            except Exception as e:
-                self.log_manager.log_error(f"Unexpected error: {e}")
-                if attempt < MAX_RETRIES:
-                    continue
-                else:
-                    return False
-        return False
-
-    def download_channel(self):
-        """Download all videos from a YouTube channel"""
-        print("\n" + "=" * 50)
-        Enhanced_Menu.print_header("Channel Download")
-        print("=" * 50)
-        Enhanced_Menu.print_status("Warning: This may download many videos", "error")
-        Enhanced_Menu.print_status("It could take a long time and use significant disk space", "error")
-        print("=" * 50)
-        channel_url = Enhanced_Menu.get_input("Enter YouTube channel URL: ", "str")
-        if not channel_url:
-            print("No URL provided")
-            return False
-        if not self.validate_youtube_url(channel_url):
-            Enhanced_Menu.print_status("Invalid YouTube URL. Please enter a valid YouTube channel URL", "error")
-            return False
-        confirm = Enhanced_Menu.get_input("Are you sure you want to download ALL videos from this channel? (y/n)", "yn", default=False)
-        if not confirm:
-            Enhanced_Menu.print_status("Channel download cancelled", "info")
-            return False
-        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
-            self.get_user_preferences()
-        print(f"Starting Channel download. This may take a VERY long time...")
-        start_time = time.time()
-        output_template = str(self.__output_directory / "%(channel)s/%(artist)s - %(title)s.%(ext)s")
-        additional_args = [
-            "--yes-playlist",
-            "--download-archive", "downloaded_channels.txt"
-        ]
-        for attempt in range(1, MAX_RETRIES + 1):
-            print(f"{'=' * 50}")
-            print(f"Downloading Channel: Attempt {attempt} of {MAX_RETRIES}")
-            print(f"{'=' * 50}")
-            if attempt > 1:
-                print(f"Waiting {RETRY_DELAY} seconds before retry...")
-                time.sleep(RETRY_DELAY)
-            try:
-                result = self.run_download(channel_url, output_template, additional_args)
-                if result.returncode == 0:
-                    elapsed_time = time.time() - start_time
-                    self.log_manager.log_success(f"Successfully downloaded channel {channel_url}")
-                    print("=" * 50)
-                    return True
-            except subprocess.CalledProcessError as e:
-                if attempt < MAX_RETRIES:
-                    error_msg = f"Download failed (attempt {attempt}/{MAX_RETRIES}). Error: {e}"
-                    self.log_manager.log_error(error_msg)
-                else:
-                    self.log_manager.log_failure(f"Failed to download after {MAX_RETRIES} attempts: {channel_url}")
-                    return False
             except Exception as e:
                 self.log_manager.log_error(f"Unexpected error: {e}")
                 if attempt < MAX_RETRIES:
@@ -1133,7 +1042,7 @@ class Youtube_Downloader:
                                 break
                         except Exception as e:
                             if attempt == MAX_RETRIES:
-                                self.log_failure(f"Failed to download liked song: {song_url} - {str(e)[:100]}")
+                                self.log_manager.log_failure(f"Failed to download liked song: {song_url} - {str(e)[:100]}")
                                 failed_count += 1
                             else:
                                 continue
@@ -1177,7 +1086,7 @@ class Youtube_Downloader:
             return False
         except Exception as e:
             Enhanced_Menu.print_status(f"Error downloading liked songs: {str(e)[:100]}", "error")
-            self.log_error(f"Liked songs download error: {e}", exc_info=True)
+            self.log_manager.log_error(f"Liked songs download error: {e}", exc_info=True)
             return False
         
     #  ============================================= Checkers & Yt-DLP Helpers =============================================
