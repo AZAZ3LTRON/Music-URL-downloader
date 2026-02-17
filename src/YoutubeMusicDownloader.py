@@ -472,7 +472,6 @@ class Youtube_Downloader:
             progress_bar.close()
             full_output = "\n".join(output_lines)
             if process.returncode == 0:
-                self.log_manager.log_success(f"Successfully downloaded: {url}")
                 return subprocess.CompletedProcess(
                     args=command,
                     returncode=0,
@@ -891,8 +890,7 @@ class Youtube_Downloader:
                 time.sleep(RETRY_DELAY)
             try:
                 result = self.run_download(f"ytsearch1:{song_query}", output_template)
-                elapsed_time = time.time() - search_time
-                self.log_manager.log_success(f"Successfully downloaded: '{song_query}' in {elapsed_time:.1f} seconds!")
+                self.log_manager.log_success(f"Successfully downloaded: '{song_query}'")
                 print("=" * 50)
                 return True
             except Exception as e:
@@ -942,7 +940,7 @@ class Youtube_Downloader:
                 result = self.run_download(channel_url, output_template, additional_args)
                 if result.returncode == 0:
                     elapsed_time = time.time() - start_time
-                    self.log_manager.log_success(f"Successfully downloaded channel in {elapsed_time:.1f} seconds!")
+                    self.log_manager.log_success(f"Successfully downloaded channel {channel_url}")
                     print("=" * 50)
                     return True
             except subprocess.CalledProcessError as e:
@@ -960,6 +958,229 @@ class Youtube_Downloader:
                     return False
         return False
 
+    def download_liked_songs(self):
+        """Download all liked songs from YouTube Music"""
+        print("\n" + "=" * 55)
+        Enhanced_Menu.clear_screen()
+        Enhanced_Menu.print_header("Download Liked Songs", "Download your entire YouTube Music liked songs library")
+        
+        # Warning about potential large download
+        Enhanced_Menu.print_status("⚠️  This may download MANY songs depending on your library size", "warning")
+        Enhanced_Menu.print_status("Make sure you have enough disk space and a stable connection", "warning")
+        print()
+        
+        # Confirm with user
+        confirm = Enhanced_Menu.get_input("Are you sure you want to download ALL your liked songs? (y/n)", "yn", default=False)
+        if not confirm:
+            Enhanced_Menu.print_status("Liked songs download cancelled", "info")
+            return False
+        
+        # Get user preferences
+        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+            self.get_user_preferences()
+        
+        # Ask for limit (optional)
+        limit_input = Enhanced_Menu.get_input("Enter maximum number of songs to download (or press Enter for all): ", "str", default="")
+        max_songs = None
+        if limit_input.strip() and limit_input.isdigit():
+            max_songs = int(limit_input)
+            Enhanced_Menu.print_status(f"Will download up to {max_songs} songs", "info")
+        
+        # Liked songs playlist URL
+        liked_songs_url = "https://music.youtube.com/playlist?list=LM"  # LM = Liked Music
+        
+        Enhanced_Menu.print_status("Fetching your liked songs... This may take a moment", "info")
+        
+        # First, get information about the liked songs playlist
+        try:
+            # Get playlist info to count songs
+            info_command = [
+                "yt-dlp",
+                "--flat-playlist",
+                "--dump-json",
+                "--no-warnings",
+                liked_songs_url
+            ]
+            
+            result = subprocess.run(
+                info_command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30,
+                check=False
+            )
+            
+            if result.returncode != 0:
+                error_msg = result.stderr.lower()
+                if "private" in error_msg or "login" in error_msg:
+                    Enhanced_Menu.print_status(
+                        "Cannot access liked songs. You may need to:\n"
+                        "1. Export cookies from your browser first\n"
+                        "2. Enable cookies in settings\n"
+                        "3. Make sure you're logged into YouTube Music",
+                        "error"
+                    )
+                    return False
+                else:
+                    Enhanced_Menu.print_status(f"Error fetching liked songs: {error_msg[:100]}", "error")
+                    return False
+            
+            # Parse the JSON output to count songs
+            songs = []
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    try:
+                        song_info = json.loads(line)
+                        songs.append(song_info)
+                    except json.JSONDecodeError:
+                        continue
+            
+            total_songs = len(songs)
+            if max_songs:
+                total_songs = min(total_songs, max_songs)
+            
+            Enhanced_Menu.print_status(f"Found {Fore.CYAN}{total_songs}{Style.RESET_ALL} liked songs", "success")
+            
+            if total_songs == 0:
+                Enhanced_Menu.print_status("No liked songs found", "warning")
+                return False
+            
+            # Confirm download
+            print()
+            print(f"{Fore.YELLOW}Download Summary:{Style.RESET_ALL}")
+            print(f"  • Songs to download: {Fore.CYAN}{total_songs}{Style.RESET_ALL}")
+            print(f"  • Output directory: {Fore.CYAN}{self.__output_directory}/Liked Songs/{Style.RESET_ALL}")
+            print(f"  • Format: {Fore.CYAN}{self.__audio_format}{Style.RESET_ALL}")
+            print(f"  • Quality: {Fore.CYAN}{self.__audio_quality}{Style.RESET_ALL}")
+            print()
+            
+            final_confirm = Enhanced_Menu.get_input("Proceed with download? (y/n)", "yn", default=True)
+            if not final_confirm:
+                Enhanced_Menu.print_status("Download cancelled", "info")
+                return False
+            
+            # Setup output template for liked songs
+            output_template = str(self.__output_directory / "Liked Songs" / "%(artist)s - %(title)s.%(ext)s")
+            
+            # Create the directory
+            os.makedirs(os.path.dirname(output_template), exist_ok=True)
+            
+            # Create a progress file to track downloaded songs
+            progress_file = self.__output_directory / "Liked Songs" / "download_progress.json"
+            downloaded_songs = set()
+            
+            # Load previous progress if exists
+            if progress_file.exists():
+                try:
+                    with open(progress_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        downloaded_songs = set(data.get('downloaded', []))
+                        Enhanced_Menu.print_status(f"Resuming download - {len(downloaded_songs)} songs already downloaded", "info")
+                except:
+                    pass
+            
+            # Filter out already downloaded songs
+            if downloaded_songs:
+                songs_to_download = [s for s in songs if s.get('id') not in downloaded_songs]
+                if max_songs:
+                    songs_to_download = songs_to_download[:max_songs - len(downloaded_songs)]
+                Enhanced_Menu.print_status(f"{len(songs_to_download)} new songs to download", "info")
+            else:
+                songs_to_download = songs[:max_songs] if max_songs else songs
+            
+            if not songs_to_download:
+                Enhanced_Menu.print_status("All liked songs are already downloaded!", "success")
+                return True
+            
+            # Start download with progress bar
+            print()
+            Enhanced_Menu.print_section("Downloading Liked Songs")
+            
+            success_count = 0
+            failed_count = 0
+            skipped_count = 0
+            
+            # Create a tqdm progress bar for overall progress
+            with tqdm(total=len(songs_to_download), desc="Overall Progress", unit="songs", 
+                    bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} songs [{elapsed}<{remaining}]") as pbar:
+                
+                for i, song in enumerate(songs_to_download, 1):
+                    song_title = song.get('title', 'Unknown')
+                    song_artist = song.get('uploader', song.get('artist', 'Unknown Artist'))
+                    song_url = f"https://music.youtube.com/watch?v={song.get('id')}"
+                    
+                    Enhanced_Menu.print_status(f"\n[{i}/{len(songs_to_download)}] Downloading: {song_artist} - {song_title}", "info")
+                    
+                    # Download the song with retries
+                    download_success = False
+                    for attempt in range(1, MAX_RETRIES + 1):
+                        if attempt > 1:
+                            print(f"  Retry {attempt}/{MAX_RETRIES}...")
+                            time.sleep(RETRY_DELAY)
+                        
+                        try:
+                            result = self.run_download(song_url, output_template)
+                            if result and result.returncode == 0:
+                                download_success = True
+                                
+                                # Mark as downloaded in progress file
+                                downloaded_songs.add(song.get('id'))
+                                with open(progress_file, 'w', encoding='utf-8') as f:
+                                    json.dump({'downloaded': list(downloaded_songs)}, f, indent=2)
+                                
+                                success_count += 1
+                                break
+                        except Exception as e:
+                            if attempt == MAX_RETRIES:
+                                self.log_failure(f"Failed to download liked song: {song_url} - {str(e)[:100]}")
+                                failed_count += 1
+                            else:
+                                continue
+                    
+                    if not download_success:
+                        failed_count += 1 # Add to 
+                    
+                    # Update progress bar
+                    pbar.update(1)
+                    pbar.set_postfix(success=success_count, failed=failed_count)
+                    
+                    # Small delay between downloads to avoid rate limiting
+                    time.sleep(1)
+            
+            # Print summary
+            print("\n" + "=" * 55)
+            Enhanced_Menu.print_header("Download Complete")
+            print(f"  {Fore.GREEN}Successfully downloaded: {success_count}{Style.RESET_ALL}")
+            if failed_count > 0:
+                print(f"  {Fore.RED} Failed: {failed_count}{Style.RESET_ALL}")
+            if skipped_count > 0:
+                print(f"  {Fore.YELLOW}Skipped (already downloaded): {skipped_count}{Style.RESET_ALL}")
+            print("=" * 55)
+            
+            # Offer to open the folder
+            if success_count > 0:
+                open_folder = Enhanced_Menu.get_input("\nOpen download folder? (y/n)", "yn", default=False)
+                if open_folder:
+                    folder_path = str(self.__output_directory / "Liked Songs")
+                    if sys.platform == 'win32':
+                        os.startfile(folder_path)
+                    elif sys.platform == 'darwin':
+                        subprocess.run(['open', folder_path])
+                    else:
+                        subprocess.run(['xdg-open', folder_path])
+            
+            return failed_count == 0
+            
+        except subprocess.TimeoutExpired:
+            Enhanced_Menu.print_status("Timeout while fetching liked songs", "error")
+            return False
+        except Exception as e:
+            Enhanced_Menu.print_status(f"Error downloading liked songs: {str(e)[:100]}", "error")
+            self.log_error(f"Liked songs download error: {e}", exc_info=True)
+            return False
+        
+    #  ============================================= Checkers & Yt-DLP Helpers =============================================
     def manage_cookies(self):
         """Calls the cookie management menu"""
         self.cookie_manager.interactive_menu()
@@ -970,8 +1191,7 @@ class Youtube_Downloader:
             else:
                 self.use_cookies = False
             self.save_config()
-
-    #  ============================================= Checkers & Yt-DLP Helpers =============================================
+    
     @staticmethod
     def check_ytdlp():
         """Check if yt-dlp is installed"""
@@ -1390,14 +1610,15 @@ def main():
         4: lambda: downloader.download_from_file(),
         5: lambda: downloader.search_a_song(),
         6: lambda: downloader.download_channel(),
-        7: lambda: downloader.manage_cookies(),
-        8: lambda: downloader.check_dependencies(),
-        9: lambda: handle_settings(),
-        10: lambda: Youtube_Downloader.program_info(),
-        11: lambda: downloader.troubleshooting(),
-        12: lambda: Youtube_Downloader.show_ytdlp_help(),
-        13: lambda: downloader.log_manager.interactive_menu(),
-        14: lambda: handle_exit()
+        7: lambda: downloader.download_liked_songs(),
+        8: lambda: downloader.manage_cookies(),
+        9: lambda: downloader.check_dependencies(),
+        10: lambda: handle_settings(),
+        11: lambda: Youtube_Downloader.program_info(),
+        12: lambda: downloader.troubleshooting(),
+        13: lambda: Youtube_Downloader.show_ytdlp_help(),
+        14: lambda: downloader.log_manager.interactive_menu(),
+        15: lambda: handle_exit()
     }
 
     while True:
@@ -1411,22 +1632,23 @@ def main():
             Enhanced_Menu.print_menu_item(4, "Download From Text File")
             Enhanced_Menu.print_menu_item(5, "Search & Download a Song")
             Enhanced_Menu.print_menu_item(6, "Download a YouTube Channel")
+            Enhanced_Menu.print_menu_item(7, "Download Liked Songs") # Added feature
             
             Enhanced_Menu.print_section("⚙️  TOOLS & SETTINGS")
-            Enhanced_Menu.print_menu_item(7, "Manage Cookies (for restricted content)")
-            Enhanced_Menu.print_menu_item(8, "Check Dependencies")
-            Enhanced_Menu.print_menu_item(9, "Program Settings")
+            Enhanced_Menu.print_menu_item(8, "Manage Cookies (for restricted content)")
+            Enhanced_Menu.print_menu_item(9, "Check Dependencies")
+            Enhanced_Menu.print_menu_item(10, "Program Settings")
             
             Enhanced_Menu.print_section("❓ HELP & INFORMATION")
-            Enhanced_Menu.print_menu_item(10, "Show Program Info")
-            Enhanced_Menu.print_menu_item(11, "Troubleshooting")
-            Enhanced_Menu.print_menu_item(12, "Show yt-dlp Help")
+            Enhanced_Menu.print_menu_item(11, "Show Program Info")
+            Enhanced_Menu.print_menu_item(12, "Troubleshooting")
+            Enhanced_Menu.print_menu_item(13, "Show yt-dlp Help")
             
             Enhanced_Menu.print_section("📊 LOG MANAGEMENT")
-            Enhanced_Menu.print_menu_item(13, "Log Manager")
+            Enhanced_Menu.print_menu_item(14, "Log Manager")
             
             Enhanced_Menu.print_section("🚪 EXIT")
-            Enhanced_Menu.print_menu_item(14, "Exit Program")
+            Enhanced_Menu.print_menu_item(15, "Exit Program")
             print(f"\n{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
             Enhanced_Menu.print_status("Current Settings:", "info", "⚙️")
             settings = [
@@ -1441,7 +1663,7 @@ def main():
             print(f"  {Fore.CYAN}Cookies:{Style.RESET_ALL} {cookie_color}{cookie_status}{Style.RESET_ALL}")
             print(f"{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
             
-            choice = Enhanced_Menu.get_input("\nEnter your choice (1-14)", "int", 1, 14)
+            choice = Enhanced_Menu.get_input("\nEnter your choice (1-15)", "int", 1, 15)
             action = actions.get(choice)
             
             if action:
@@ -1451,7 +1673,7 @@ def main():
                     result = action()
                     
                     # Handle the result if needed
-                    if result is False and choice not in [8, 10, 11, 12, 13, 14]:
+                    if result is False and choice not in [8, 10, 11, 12, 13, 14, 15]:
                         print()
                         retry = Enhanced_Menu.get_input("Operation failed. Try again? (y/n)", "yn", default=True)
                         if retry:
@@ -1465,7 +1687,7 @@ def main():
             else:
                 Enhanced_Menu.print_status("Invalid option", "error")
                 
-            if choice != 14:
+            if choice != 15:
                 print()
                 cont = Enhanced_Menu.get_input("Return to main menu? (y/n)", "yn", default=True)
                 if not cont:
