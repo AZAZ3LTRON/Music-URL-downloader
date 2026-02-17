@@ -835,38 +835,6 @@ class Youtube_Downloader:
         
         return failed_count == 0
     
-    @rate_limit(calls_per_minute=30)
-    def search_a_song(self):
-        """Search for a song and download it"""
-        Enhanced_Menu.print_header("SEARCH & DOWNLOAD")
-        song_query = Enhanced_Menu.get_input("What is the name of the song you're looking for: ").strip()
-        if not song_query:
-            Enhanced_Menu.print_status("No search query provided", "error")
-            return False
-        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
-            self.get_user_preferences()
-        search_time = time.time()
-        Enhanced_Menu.print_header("Searching for the song. Browsing through YouTube...")
-        output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
-        for attempt in range(1, MAX_RETRIES + 1):
-            print("=" * 50)
-            Enhanced_Menu.print_header("Search and download")
-            if attempt > 1:
-                print(f"Waiting {RETRY_DELAY} seconds before retry...")
-                time.sleep(RETRY_DELAY)
-            try:
-                result = self.run_download(f"ytsearch1:{song_query}", output_template)
-                self.log_manager.log_success(f"Successfully downloaded: '{song_query}'")
-                print("=" * 50)
-                return True
-            except Exception as e:
-                self.log_manager.log_error(f"Unexpected error: {e}")
-                if attempt < MAX_RETRIES:
-                    continue
-                else:
-                    return False
-        return False
-
     def download_liked_songs(self):
         """Download all liked songs from YouTube Music"""
         print("\n" + "=" * 55)
@@ -1089,6 +1057,38 @@ class Youtube_Downloader:
             self.log_manager.log_error(f"Liked songs download error: {e}", exc_info=True)
             return False
         
+    @rate_limit(calls_per_minute=30)
+    def search_a_song(self):
+        """Search for a song and download it"""
+        Enhanced_Menu.print_header("SEARCH & DOWNLOAD")
+        song_query = Enhanced_Menu.get_input("What is the name of the song you're looking for: ").strip()
+        if not song_query:
+            Enhanced_Menu.print_status("No search query provided", "error")
+            return False
+        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+            self.get_user_preferences()
+        search_time = time.time()
+        Enhanced_Menu.print_header("Searching for the song. Browsing through YouTube...")
+        output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
+        for attempt in range(1, MAX_RETRIES + 1):
+            print("=" * 50)
+            Enhanced_Menu.print_header("Search and download")
+            if attempt > 1:
+                print(f"Waiting {RETRY_DELAY} seconds before retry...")
+                time.sleep(RETRY_DELAY)
+            try:
+                result = self.run_download(f"ytsearch1:{song_query}", output_template)
+                self.log_manager.log_success(f"Successfully downloaded: '{song_query}'")
+                print("=" * 50)
+                return True
+            except Exception as e:
+                self.log_manager.log_error(f"Unexpected error: {e}")
+                if attempt < MAX_RETRIES:
+                    continue
+                else:
+                    return False
+        return False
+
     #  ============================================= Checkers & Yt-DLP Helpers =============================================
     def manage_cookies(self):
         """Calls the cookie management menu"""
