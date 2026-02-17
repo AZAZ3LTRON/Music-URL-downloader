@@ -10,7 +10,7 @@ init(autoreset=True)
 
 from EnhancedMenu import Enhanced_Menu
 
-class DownloaderUtils:        
+class DownloaderUtils:    
     @staticmethod
     def check_ffmpeg() -> bool:
         """Check if ffmpeg is installed"""
@@ -95,7 +95,6 @@ class DownloaderUtils:
         else:
             print(f"{Fore.RED}✗{Style.RESET_ALL} yt-dlp is not installed")
             return False
-
 
     @staticmethod
     def show_ytdlp_help():

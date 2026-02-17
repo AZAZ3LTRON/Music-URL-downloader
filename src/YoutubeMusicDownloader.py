@@ -48,6 +48,7 @@ from colorama import init, Fore, Style
 from CookieManager import CookieManager
 from EnhancedMenu import Enhanced_Menu
 from Logs_Handler import Logs_Manager
+from Downloader_Utils import DownloaderUtils
 
 init(autoreset=True)
 
@@ -81,6 +82,7 @@ class Youtube_Downloader:
         self.__configuration_file = r"config/youtube_downloader.json"
         self.cookie_manager = CookieManager()
         self.log_manager = Logs_Manager()
+        self.utils = DownloaderUtils()
         self.use_cookies = False
         self.__output_directory.mkdir(parents=True, exist_ok=True)
         Path("links").mkdir(parents=True, exist_ok=True)
@@ -1101,207 +1103,34 @@ class Youtube_Downloader:
                 self.use_cookies = False
             self.save_config()
     
-    @staticmethod
-    def check_ytdlp():
-        """Check if yt-dlp is installed"""
-        Enhanced_Menu.print_header("Checking for yt-dlp")
-        # Check with basic shutil to find the file on PATH
-        if shutil.which("yt-dlp"):
-            print("yt-dlp is already installed")
-            try:
-                result = subprocess.run(
-                    ["yt-dlp", "--version"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    check=True,
-                    timeout=10
-                )
-                if result.returncode == 0:
-                    version = result.stdout.strip()
-                    print(f"yt-dlp version: {version}") # Print python
-                    return True
-            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
-                print("Could not determine yt-dlp version")
-                return False
-        else:
-            print("yt-dlp is not installed")
-            return False
-
-    @staticmethod
-    def check_ffmpeg():
-        """Check if ffmpeg is installed"""
-        Enhanced_Menu.print_header("Checking for FFMpeg")
-        # Check with basic shutil to find the file on PATH
-        if shutil.which("ffmpeg"):
-            print("ffmpeg is already installed")
-            try:
-                result = subprocess.run(
-                    ["ffmpeg", "-version"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    check=True,
-                    timeout=10
-                )
-                if result.returncode == 0:
-                    version = result.stdout.strip()
-                    Enhanced_Menu.print_status(f"ffmpeg version: {version}", "success")
-                    return True
-            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
-                Enhanced_Menu.print_status("Could not determine ffmpeg version", "error")
-                return False
-        else:
-            Enhanced_Menu.print_status("ffmpeg is not installed", "error")
-            return False
-
-    @staticmethod
-    def show_ytdlp_help():
-        """Display yt-dlp help"""
-        try:
-            result = subprocess.run(
-                ["yt-dlp", "--help"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=True,
-            )
-            print("\n" + "=" * 50)
-            Enhanced_Menu.print_header("YT-DLP HELP")
-            print("=" * 50)
-            print(result.stdout[:1000])
-            print("\n... (output truncated, use 'yt-dlp --help' for full help)")
-        except subprocess.CalledProcessError as e:
-            Enhanced_Menu.print_status(f"Could not get yt-dlp help: {e}", "error")
-            return False
-        input("\nPress Enter to continue....")
-        return True
-
-    @staticmethod
-    def check_dependencies():
-        """Check for missing dependencies"""
-        Enhanced_Menu.print_header("Checking for Missing Dependencies")
-        missing_packages = []
-        for package in ['browser_cookie3', 'colorama', 'tqdm', 'yt-dlp']:
-            try:
-                __import__(package)
-            except ImportError:
-                missing_packages.append(package)
-        if missing_packages:
-            print(f"Missing packages: {', '.join(missing_packages)}")
-            print("Install with: pip install " + " ".join(missing_packages))
-            return False
-        input("\nPress Enter to continue....")
-        return True
-
-    @staticmethod
-    def setup_dependencies():
-        """Automatically install required libraries & dependencies"""
-        dependencies = {
-            'yt-dlp': ['yt-dlp'],
-            'ffmpeg': ['ffmpeg-python'],
-            'browser_cookie3': ['browser_cookie3'],
-            'tqdm': ['tqdm'],
-            'colorama': ['colorama']
-        }
-        for package_name, packages in dependencies.items():
-            try:
-                __import__(package_name)
-            except ImportError:
-                print(f"Installing {package_name}....")
-                subprocess.check_call([sys.executable, "-m", "pip", "install"] + packages)
-
-    def troubleshooting(self):
-        """Troubleshooting"""
-        print("\n" + "=" * 50)
-        Enhanced_Menu.print_header("TROUBLESHOOTING", "")
-        print("=" * 50)
-        print("Hello, this troubleshooter is to help if you're experiencing problem in the program")
-        print("Running a simple diagnostic. This might take a while.....")
-        
-        # Step 1: Check if yt-dlp is installed
-        Enhanced_Menu.print_status("1. Checking yt-dlp installation...", "info")
-        if not Youtube_Downloader.check_ytdlp():
-            Enhanced_Menu.print_status("yt-dlp not found or not working", "error")
-            install = Enhanced_Menu.get_input("Install yt-dlp now? (y/n)", "yn", default=True)
-            if install:
-                Youtube_Downloader.setup_dependencies()
-        
-        # Step 2: Check for ffmpeg on path      
-        Enhanced_Menu.print_status("\n2. Checking FFmpeg installation...", "info")
-        if not Youtube_Downloader.check_ffmpeg():
-            Enhanced_Menu.print_status("FFmpeg not found (audio conversion might fail)", "error")
-        
-        # Check internet connection
-        Enhanced_Menu.print_status("\n3. Testing YouTube access...", "info")
-        test_url = "https://music.youtube.com/watch?v=215T8NF93kw"
-        try:
-            test_command = ["yt-dlp", "--skip-download", "--print-json", test_url]
-            result = subprocess.run(
-                test_command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=30
-            )
-            if result.returncode == 0:
-                Enhanced_Menu.print_status("Can access YouTube", "success")
-            else:
-                Enhanced_Menu.print_status(f"Cannot access YouTube: {result.stderr[:100]}", "error")
-        except Exception as e:
-            Enhanced_Menu.print_status(f"Test failed: {e}", "error")
-        
-        # Check directories if they exist
-        Enhanced_Menu.print_status("\n4. Checking directories...", "info")
-        directories = ["Albums", "links", "cookies"]
-        for directory in directories:
-            if os.path.exists(directory):
-                Enhanced_Menu.print_status(f"{directory}/ exists", "success")
-            else:
-                Enhanced_Menu.print_status(f"{directory}/ missing", "warning")
-        input("\nPress Enter to continue...")
-        return True
-
-    @staticmethod
-    def program_info():
-        """Display program information"""
-        print("=" * 80)
-        Enhanced_Menu.print_header("Interactive YouTube/YouTube Music Playlist/Album/Track Downloader")
-        print("=" * 80)
-        print(f"""
-            {Fore.CYAN}Description:{Style.RESET_ALL}
-            A comprehensive tool for downloading music from YouTube and YouTube Music
-            with support for albums, playlists, channels, and individual tracks.
-
-            {Fore.CYAN}Features:{Style.RESET_ALL}
-            • Download single tracks from YouTube/YouTube Music
-            • Download complete albums from YouTube Music
-            • Download playlists with metadata preservation
-            • Batch download from text files
-            • Search and download songs by name
-            • Download entire YouTube channels
-            • Cookie management for authentication
-            • Customizable audio format and quality
-            • Progress tracking with visual feedback
-
-            {Fore.CYAN}Formats Supported:{Style.RESET_ALL}
-            MP3, M4A, FLAC, OGG, OPUS, WAV
-
-            {Fore.CYAN}Requirements:{Style.RESET_ALL}
-            • Python 3.7+
-            • yt-dlp
-            • FFmpeg (recommended for audio conversion)
-            • Internet connection
-
-            {Fore.CYAN}Usage Tips:{Style.RESET_ALL}
-            • Use cookies for age-restricted or region-restricted content
-            • Configure settings before large downloads
-            • Check dependencies if encountering issues
-            • Use batch files for multiple downloads
-            • Monitor disk space for large downloads
-            """)
-        input("\nPress Enter to continue...")
-        return True
+    # Methods that now call the static methods from DownloaderUtils
+    def check_ytdlp(self):
+        """Check if ytdlp is installed using utils"""
+        return self.utils.check_ytdlp()
+    
+    def check_ffmpeg(self):
+        """Check if ffmpeg is installed using utils"""
+        return self.utils.check_ffmpeg()
+    
+    def show_ytdlp_help(self):
+        """Display yt-dlp help using utils"""
+        return self.utils.show_ytdlp_help()
+    
+    def show_spotdl_help(self):
+        """Display spotdl help using utils"""
+        return self.utils.show_spotdl_help()
+    
+    def check_dependencies(self):
+        """Check for missing dependencies using utils"""
+        return self.utils.check_dependencies()
+    
+    def setup_dependencies(self):
+        """Setup dependencies using utils"""
+        self.utils.setup_dependencies()
+    
+    def program_info(self):
+        """Display program information using utils"""
+        return self.utils.program_info()
 
     def reset_to_defaults(self):
         """Reset all settings to default values"""
@@ -1368,30 +1197,25 @@ def main():
             Enhanced_Menu.clear_screen()
             Enhanced_Menu.print_header("PROGRAM SETTINGS", "Configure download preferences")
             
-            Enhanced_Menu.print_section("🎵 Audio Settings")
+            Enhanced_Menu.print_section("🎵 Download Settings")
             current_format = downloader._Youtube_Downloader__audio_format
             current_quality = downloader._Youtube_Downloader__audio_quality
-            Enhanced_Menu.print_menu_item(1, "Audio Format",
-                                          f"Current: {Fore.GREEN}{current_format.upper()}{Style.RESET_ALL}")
-            Enhanced_Menu.print_menu_item(2, "Audio Quality",
-                                          f"Current: {Fore.GREEN}{current_quality}{Style.RESET_ALL}")
-            Enhanced_Menu.print_section("📁 Output Settings")
+            Enhanced_Menu.print_menu_item(1, "Audio Format", f"Current: {Fore.GREEN}{current_format.upper()}{Style.RESET_ALL}")
+            Enhanced_Menu.print_menu_item(2, "Audio Quality", f"Current: {Fore.GREEN}{current_quality}{Style.RESET_ALL}")
             current_dir = str(downloader._Youtube_Downloader__output_directory)
-            Enhanced_Menu.print_menu_item(3, "Output Directory",
-                                          f"Current: {Fore.CYAN}{current_dir}{Style.RESET_ALL}")
+            Enhanced_Menu.print_menu_item(3, "Output Directory", f"Current: {Fore.CYAN}{current_dir}{Style.RESET_ALL}")
             
             Enhanced_Menu.print_section("🌐 NETWORK SETTINGS")
             cookie_status = "ENABLED" if downloader.use_cookies else "DISABLED"
             cookie_color = Fore.GREEN if downloader.use_cookies else Fore.YELLOW
-            Enhanced_Menu.print_menu_item(4, "Cookie Authentication",
-                                          f"Current: {cookie_color}{cookie_status}{Style.RESET_ALL}")
+            Enhanced_Menu.print_menu_item(4, "Cookie Authentication", f"Current: {cookie_color}{cookie_status}{Style.RESET_ALL}")
             
             Enhanced_Menu.print_section("💾 Download Configuration")
-            Enhanced_Menu.print_menu_item(5, "Save Settings", "Save current settings to file")
-            Enhanced_Menu.print_menu_item(6, "Load Settings", "Load settings from file")
-            Enhanced_Menu.print_menu_item(7, "Reset to Defaults", "Restore default settings")
+            Enhanced_Menu.print_menu_item(5, "Save Configuration")
+            Enhanced_Menu.print_menu_item(6, "Load Configuration")
+            Enhanced_Menu.print_menu_item(7, "Reset to Defaults")
             Enhanced_Menu.print_section("↩️  NAVIGATION")
-            Enhanced_Menu.print_menu_item(8, "Back to Main Menu", "Return to main menu")
+            Enhanced_Menu.print_menu_item(8, "Back to Main Menu")
             print()
             choice = Enhanced_Menu.get_input("Select option", "int", 1, 8)
             if choice == 1:
@@ -1435,7 +1259,8 @@ def main():
                     new_quality = qualities[quality_choice - 1][0]
                     downloader._Youtube_Downloader__audio_quality = new_quality
                     Enhanced_Menu.print_status(f"Audio quality set to {new_quality}", "success")
-                    
+            
+            # Set output
             elif choice == 3:
                 Enhanced_Menu.clear_screen()
                 Enhanced_Menu.print_header("OUTPUT DIRECTORY", "Set where files are saved")
@@ -1523,9 +1348,9 @@ def main():
         8: lambda: downloader.manage_cookies(),
         9: lambda: downloader.check_dependencies(),
         10: lambda: handle_settings(),
-        11: lambda: Youtube_Downloader.program_info(),
+        11: lambda: downloader.program_info(),
         12: lambda: downloader.troubleshooting(),
-        13: lambda: Youtube_Downloader.show_ytdlp_help(),
+        13: lambda: downloader.show_ytdlp_help(),
         14: lambda: downloader.log_manager.interactive_menu(),
         15: lambda: handle_exit()
     }
