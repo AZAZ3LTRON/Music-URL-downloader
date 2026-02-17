@@ -586,18 +586,6 @@ class Youtube_Downloader:
             if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
                 self.get_user_preferences()
             
-            # Confirm settings before download
-            Enhanced_Menu.print_section("Download Settings")
-            print(f"  • Type: {Fore.CYAN}{item_type.title()}{Style.RESET_ALL}")
-            print(f"  • Format: {Fore.CYAN}{self.__audio_format}{Style.RESET_ALL}")
-            print(f"  • Quality: {Fore.CYAN}{self.__audio_quality}{Style.RESET_ALL}")
-            print(f"  • Output: {Fore.CYAN}{self.__output_directory}{Style.RESET_ALL}")
-            print()
-            
-            if not Enhanced_Menu.get_input("Proceed with download? (y/n)", "yn", default=True):
-                Enhanced_Menu.print_status("Download cancelled", "info")
-                continue
-            
             Enhanced_Menu.print_status(f"Starting {item_type} download...", "info")
             
             # Attempt download with retries
@@ -607,22 +595,14 @@ class Youtube_Downloader:
                 time.sleep(0.5)  # Small delay for clean UI
                 
                 # Ask if user wants to download another
-                another = Enhanced_Menu.get_input(
-                    f"\nDownload another {item_type}? (y/n): ", 
-                    "yn", 
-                    default=True
-                )
+                another = Enhanced_Menu.get_input(f"\nDownload another {item_type}? (y/n): ", "yn", default=True)
                 if another:
                     continue
                 else:
                     return True
             else:
                 # Download failed after all retries
-                retry = Enhanced_Menu.get_input(
-                    f"\nDownload failed. Try another {item_type}? (y/n): ", 
-                    "yn", 
-                    default=True
-                )
+                retry = Enhanced_Menu.get_input(f"\nDownload failed. Try another {item_type}? (y/n): ", "yn", default=True)
                 if retry:
                     continue
                 else:
@@ -1115,11 +1095,7 @@ class Youtube_Downloader:
     def show_ytdlp_help(self):
         """Display yt-dlp help using utils"""
         return self.utils.show_ytdlp_help()
-    
-    def show_spotdl_help(self):
-        """Display spotdl help using utils"""
-        return self.utils.show_spotdl_help()
-    
+        
     def check_dependencies(self):
         """Check for missing dependencies using utils"""
         return self.utils.check_dependencies()

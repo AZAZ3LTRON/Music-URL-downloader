@@ -46,73 +46,19 @@ from colorama import init, Fore, Style
 init(autoreset=True)
 
 from EnhancedMenu import Enhanced_Menu
+from Logs_Handler import Logs_Manager
 from CookieManager import CookieManager
+from Downloader_Utils import DownloaderUtils
 
 """ =========================================== Pre Config ===========================================
 This part of the pre-configuration of the downloader, it can be change. Each part is explained below:
-* SUCCESS_LOG - Logs the successful downloads (subject to change)
-* FAILED_LOG - Logs failed downloads (subject to change)
-* ERROR_LOG - Logs error in the download process (subject to change)
 * MAX_RETRIES - No of times the downloader can retry on a link (subject to change)
 * RETRY_DELAY - The delay between each retry (subject to change)
 ======================================================================================================= """
 
-SUCCESS_LOG = r"log\success.log"
-FAILED_LOG = r"log\failed.log"
-ERROR_LOG = r"log\error.log"
 MAX_RETRIES = 3
 RETRY_DELAY = 10
 DOWNLOAD_TIMEOUT = 120
-COOKIE_DIRECTORY = r"cookies"
-
-os.makedirs("log", exist_ok=True)
-os.makedirs(COOKIE_DIRECTORY, exist_ok=True)
-
-"""==== Logger: Initialize the log fies before write ====  """
-
-logger = logging.getLogger("Spotify Downloader")
-log_format = logging.Formatter("SpotDL_Music_Converter - %(asctime)s - %(levelname)s - %(funcName)s - %(message)s")
-
-success_downloads = logging.getLogger("successful downloads")
-failed_downloads = logging.getLogger("failed downloads")
-error_downloads = logging.getLogger("error in downloads")
-console_logger = logging.getLogger("console")
-
-# Create loggers (successful downloads logger) ----------------------------------------------
-success_downloads.setLevel(logging.INFO)
-success_downloads.propagate = False
-
-success_handler = logging.FileHandler(SUCCESS_LOG, encoding='utf-8')
-success_handler.setLevel(logging.INFO)
-success_handler.setFormatter(log_format)
-success_downloads.addHandler(success_handler)
-
-# Failed download logger ---------------------------------------------------------------
-failed_downloads.setLevel(logging.INFO)
-failed_downloads.propagate = False
-
-failed_handler = logging.FileHandler(FAILED_LOG, encoding='utf-8')
-failed_handler.setLevel(logging.INFO)
-failed_handler.setFormatter(log_format)
-failed_downloads.addHandler(failed_handler)
-
-# Error in download logger ----------------------------------------------------------
-error_downloads.setLevel(logging.INFO)
-error_downloads.propagate = False
-
-error_handler = logging.FileHandler(ERROR_LOG, encoding='utf-8')
-error_handler.setLevel(logging.ERROR)
-error_handler.setFormatter(log_format)
-error_downloads.addHandler(error_handler)
-
-# General console logger (stream handler for console output)
-console_logger.setLevel(logging.INFO)
-console_logger.propagate = False
-
-console_stream_handler = logging.StreamHandler()
-console_stream_handler.setLevel(logging.INFO)
-console_stream_handler.setFormatter(log_format)
-console_logger.addHandler(console_stream_handler)
 
 class Spotify_Downloader:
     def __init__(self):
@@ -130,43 +76,18 @@ class Spotify_Downloader:
         self._configuration_file = Path("config/spotify_downloader.json")
 
         self.cookie_manager = CookieManager()
+        self.log_manager = Logs_Manager()
+        self.utils = DownloaderUtils()
         self.use_cookies = False
 
         # Create necessary directories
         self._output_directory.mkdir(parents=True, exist_ok=True)
         Path("links").mkdir(parents=True, exist_ok=True)
-        Path("log").mkdir(parents=True, exist_ok=True)
-
-        # Load configuration
-        self.load_config()
-
-    # -----------------------------------------------------------------
-    # Properties for public access to settings
-    # -----------------------------------------------------------------
-    @property
-    def output_directory(self) -> Path:
-        return self._output_directory
-
-    @output_directory.setter
-    def output_directory(self, value):
-        self._output_directory = Path(value)
-        self._output_directory.mkdir(parents=True, exist_ok=True)
-
-    @property
-    def audio_quality(self) -> str:
-        return self._audio_quality
-
-    @audio_quality.setter
-    def audio_quality(self, value):
-        self._audio_quality = value
-
-    @property
-    def audio_format(self) -> str:
-        return self._audio_format
-
-    @audio_format.setter
-    def audio_format(self, value):
-        self._audio_format = value
+        try:
+            # Load configuration
+            self.load_config()
+        except Exception as e:
+            self.log_manager.log_manager.log_error("Error loading config")
 
     # -----------------------------------------------------------------
     # Configuration management
@@ -209,7 +130,7 @@ class Spotify_Downloader:
                 self.use_cookies = config["use_cookies"]
 
         except Exception as e:
-            self.log_error(f"Error loading configuration: {e}")
+            self.log_manager.log_error(f"Error loading configuration: {e}")
             # Use defaults
             self.output_directory = Path(primary_config["output_directory"])
             self.audio_quality = primary_config["audio_quality"]
@@ -237,7 +158,7 @@ class Spotify_Downloader:
                 json.dump(config, f, indent=2, ensure_ascii=False)
 
         except Exception as e:
-            self.log_error(f"Error saving configuration: {e}")
+            self.log_manager.log_error(f"Error saving configuration: {e}")
 
     def reset_config(self):
         """Reset all settings to default values"""
@@ -250,24 +171,6 @@ class Spotify_Downloader:
         self.use_cookies = False
         self.save_config()
         Enhanced_Menu.print_status("Configuration reset to defaults", "success")
-
-    # ====================================
-    # Logger Functions
-    # ===================================
-    def log_success(self, message: str):
-        """Logs only successful downloads (to success log)"""
-        success_downloads.info(message)
-        console_logger.info(f"{Fore.GREEN}{message}{Style.RESET_ALL}")
-
-    def log_failure(self, message: str):
-        """Logs only failed downloads (to failed log)"""
-        failed_downloads.info(message)
-        console_logger.info(f"{Fore.RED}{message}{Style.RESET_ALL}")
-
-    def log_error(self, message: str, exc_info=False):
-        """Logs only error in download process (to error log)"""
-        error_downloads.error(message, exc_info=exc_info)
-        console_logger.info(f"{Fore.YELLOW}{message}{Style.RESET_ALL}")
 
     # ====================================
     # Preference & Other Helpers
@@ -381,7 +284,7 @@ class Spotify_Downloader:
                     pass
 
         if removed_count > 0:
-            self.log_success("Cleaned up empty directories")
+            self.log_manager.log_success("Cleaned up empty directories")
 
     def extract_spotify_id(self, url: str) -> str:
         """ Extract Spotify ID from URL """
@@ -526,9 +429,9 @@ class Spotify_Downloader:
             cookie_args = self.cookie_manager.get_arguments()
             if cookie_args:
                 command.extend(cookie_args)
-                self.log_success("Using cookies from authentication")
+                self.log_manager.log_success("Using cookies from authentication")
             else:
-                self.log_error("No active cookies found")
+                self.log_manager.log_error("No active cookies found")
 
         if additional_args:
             command.extend(additional_args)
@@ -607,17 +510,17 @@ class Spotify_Downloader:
                 # Wait for process to finish with timeout
                 result.wait(timeout=self.download_timeout)
                 if result.returncode == 0:
-                    self.log_success(f"Downloaded: {url}")
+                    self.log_manager.log_success(f"Downloaded: {url}")
                     return True
                 else:
-                    self.log_failure(f"Download failed (code {result.returncode}): {url}")
+                    self.log_manager.log_failure(f"Download failed (code {result.returncode}): {url}")
                     return False
             except subprocess.TimeoutExpired:
                 result.kill()
-                self.log_error(f"Timeout downloading {url}")
+                self.log_manager.log_error(f"Timeout downloading {url}")
                 return False
             except Exception as e:
-                self.log_error(f"Unexpected error: {e}", exc_info=True)
+                self.log_manager.log_error(f"Unexpected error: {e}", exc_info=True)
                 return False
 
     # ====================================
@@ -681,14 +584,14 @@ class Spotify_Downloader:
                     success = True
                     break
             if success:
-                self.log_success(f"Successfully downloaded {url}")
+                self.log_manager.log_success(f"Successfully downloaded {url}")
                 another = Enhanced_Menu.get_input("Download another track?", "yn", default=True)
                 if another:
                     continue
                 else:
                     return True
             else:
-                self.log_failure(f"Failed to download after {self.max_retries} attempts: {url}")
+                self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: {url}")
                 return False
 
     @rate_limit(calls_per_minute=30)
@@ -748,14 +651,14 @@ class Spotify_Downloader:
                     success = True
                     break
             if success:
-                self.log_success(f"Successfully downloaded {url}")
+                self.log_manager.log_success(f"Successfully downloaded {url}")
                 another = Enhanced_Menu.get_input("Download another album?", "yn", default=True)
                 if another:
                     continue
                 else:
                     return True
             else:
-                self.log_failure(f"Failed to download after {self.max_retries} attempts: {url}")
+                self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: {url}")
                 return False
 
     @rate_limit(calls_per_minute=30)
@@ -813,14 +716,14 @@ class Spotify_Downloader:
                     success = True
                     break
             if success:
-                self.log_success(f"Successfully downloaded {url}")
+                self.log_manager.log_success(f"Successfully downloaded {url}")
                 another = Enhanced_Menu.get_input("Download another playlist?", "yn", default=True)
                 if another:
                     continue
                 else:
                     return True
             else:
-                self.log_failure(f"Failed to download after {self.max_retries} attempts: {url}")
+                self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: {url}")
                 return False
 
     @rate_limit(calls_per_minute=30)
@@ -855,7 +758,7 @@ class Spotify_Downloader:
             with open(filepath, "r", encoding="utf-8") as f:
                 lines = [line.rstrip() for line in f if line.strip()]
         except Exception as e:
-            self.log_failure(f"Cannot read file: {e}")
+            self.log_manager.log_failure(f"Cannot read file: {e}")
             return False
 
         urls_to_process = []
@@ -935,7 +838,7 @@ class Spotify_Downloader:
                     break
             if success:
                 success_count += 1
-                self.log_success(f"Downloaded: {url}")
+                self.log_manager.log_success(f"Downloaded: {url}")
                 # Mark as DOWNLOADED in file
                 for idx, line in enumerate(updated_lines):
                     if line.strip().startswith(url.split("#")[0].strip()):
@@ -947,7 +850,7 @@ class Spotify_Downloader:
                         break
             else:
                 failed_count += 1
-                self.log_failure(f"Failed: {url}")
+                self.log_manager.log_failure(f"Failed: {url}")
                 for idx, line in enumerate(updated_lines):
                     if line.strip().startswith(url.split("#")[0].strip()):
                         if "#" in line:
@@ -962,7 +865,7 @@ class Spotify_Downloader:
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write("\n".join(updated_lines))
         except Exception as e:
-            self.log_failure(f"Could not update file: {e}")
+            self.log_manager.log_failure(f"Could not update file: {e}")
 
         Enhanced_Menu.clear_screen()
         Enhanced_Menu.print_header("Batch Download Summary")
@@ -996,12 +899,12 @@ class Spotify_Downloader:
                     success = True
                     break
             except Exception as e:
-                self.log_error(f"Unexpected error: {e}")
+                self.log_manager.log_error(f"Unexpected error: {e}")
         if success:
-            self.log_success(f"Successfully downloaded: '{song_query}'")
+            self.log_manager.log_success(f"Successfully downloaded: '{song_query}'")
             return True
         else:
-            self.log_failure(f"Failed to download after {self.max_retries} attempts: '{song_query}'")
+            self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: '{song_query}'")
             return False
 
     # ====================================
@@ -1046,19 +949,19 @@ class Spotify_Downloader:
             )
 
             if result.returncode == 0:
-                self.log_success("Successfully downloaded user playlists")
+                self.log_manager.log_success("Successfully downloaded user playlists")
                 if result.stdout:
                     print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
                     print(result.stdout[:500])
                 return True
             else:
-                self.log_failure(f"Failed to download user playlists. Return code: {result.returncode}")
+                self.log_manager.log_failure(f"Failed to download user playlists. Return code: {result.returncode}")
                 if result.stderr:
-                    self.log_error(f"Error: {result.stderr[:500]}")
+                    self.log_manager.log_error(f"Error: {result.stderr[:500]}")
                 return False
 
         except Exception as e:
-            self.log_error(f"Unexpected exception: {e}")
+            self.log_manager.log_error(f"Unexpected exception: {e}")
             return False
 
     @rate_limit(calls_per_minute=30)
@@ -1099,19 +1002,19 @@ class Spotify_Downloader:
             )
 
             if result.returncode == 0:
-                self.log_success("Successfully downloaded liked songs")
+                self.log_manager.log_success("Successfully downloaded liked songs")
                 if result.stdout:
                     print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
                     print(result.stdout[:500])
                 return True
             else:
-                self.log_failure(f"Failed to download liked songs. Return code: {result.returncode}")
+                self.log_manager.log_failure(f"Failed to download liked songs. Return code: {result.returncode}")
                 if result.stderr:
-                    self.log_error(f"Error: {result.stderr[:500]}")
+                    self.log_manager.log_error(f"Error: {result.stderr[:500]}")
                 return False
 
         except Exception as e:
-            self.log_error(f"Unexpected exception: {e}")
+            self.log_manager.log_error(f"Unexpected exception: {e}")
             return False
 
     @rate_limit(calls_per_minute=30)
@@ -1153,125 +1056,59 @@ class Spotify_Downloader:
             )
 
             if result.returncode == 0:
-                self.log_success("Successfully downloaded saved albums")
+                self.log_manager.log_success("Successfully downloaded saved albums")
                 if result.stdout:
                     print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
                     print(result.stdout[:500])
                 return True
             else:
-                self.log_failure(f"Failed to download saved albums. Return code: {result.returncode}")
+                self.log_manager.log_failure(f"Failed to download saved albums. Return code: {result.returncode}")
                 if result.stderr:
-                    self.log_error(f"Error: {result.stderr[:500]}")
+                    self.log_manager.log_error(f"Error: {result.stderr[:500]}")
                 return False
 
         except Exception as e:
-            self.log_error(f"Unexpected exception: {e}")
+            self.log_manager.log_error(f"Unexpected exception: {e}")
             return False
 
     # ====================================
     # Check Spotdl Functions
     # ===================================
-    @staticmethod
-    def check_spotdl() -> bool:
-        """Verify spotdl is installed and print version."""
-        spotdl = shutil.which("spotdl")
-        if not spotdl:
-            Enhanced_Menu.print_status("spotdl not found in PATH", "error")
-            return False
-        try:
-            result = subprocess.run(
-                ["spotdl", "--version"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=10,
-                check=False
-            )
-            if result.returncode == 0:
-                version = result.stdout.strip()
-                Enhanced_Menu.print_status(f"spotdl version: {version}", "success")
-                return True
+    def manage_cookies(self):
+        """Calls the cookie management menu"""
+        self.cookie_manager.interactive_menu()
+        if self.cookie_manager.current_cookie_file:
+            use_cookies = Enhanced_Menu.get_input("Enable cookies for future downloads? (y/n)", "yn", default=False)
+            if use_cookies:
+                self.use_cookies = True
             else:
-                Enhanced_Menu.print_status("spotdl --version failed", "error")
-                return False
-        except Exception as e:
-            Enhanced_Menu.print_status(f"Error checking spotdl: {e}", "error")
-            return False
-
-    @staticmethod
-    def show_spotdl_help():
-        """Display spotdl help."""
-        try:
-            result = subprocess.run(
-                ["spotdl", "--help"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False
-            )
-            if result.returncode == 0:
-                Enhanced_Menu.clear_screen()
-                Enhanced_Menu.print_header("SpotDL Help")
-                print(result.stdout)
-            else:
-                Enhanced_Menu.print_status("Could not get spotdl help", "error")
-        except Exception as e:
-            Enhanced_Menu.print_status(f"Error: {e}", "error")
-        input("Press Enter to continue...")
-
-    @staticmethod
-    def check_ffmpeg() -> bool:
-        """Check if ffmpeg is installed."""
-        ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg:
-            Enhanced_Menu.print_status("ffmpeg not found – audio conversion may fail", "error")
-            return False
-        try:
-            result = subprocess.run(
-                ["ffmpeg", "-version"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=10,
-                check=False
-            )
-            if result.returncode == 0:
-                version = result.stdout.splitlines()[0]
-                Enhanced_Menu.print_status(f"ffmpeg: {version[:60]}...", "success")
-                return True
-            else:
-                Enhanced_Menu.print_status("ffmpeg not working", "error")
-                return False
-        except Exception as e:
-            Enhanced_Menu.print_status(f"ffmpeg check failed: {e}", "error")
-            return False
-
-    @staticmethod
-    def check_dependencies() -> bool:
-        """Check for required Python packages."""
-        missing = []
-        for pkg in ["browser_cookie3", "colorama", "tqdm", "spotdl"]:
-            try:
-                __import__(pkg.replace("-", "_"))
-            except ImportError:
-                missing.append(pkg)
-        if missing:
-            Enhanced_Menu.print_status(f"Missing packages: {', '.join(missing)}", "error")
-            print("Install with: pip install " + " ".join(missing))
-            return False
-        return True
-
-    @staticmethod
-    def setup_dependencies():
-        """Attempt to install missing dependencies."""
-        for pkg in ["spotdl", "browser_cookie3", "tqdm", "colorama"]:
-            try:
-                __import__(pkg.replace("-", "_"))
-                Enhanced_Menu.print_status(f"{pkg} already installed", "success")
-            except ImportError:
-                Enhanced_Menu.print_status(f"Installing {pkg}...", "info")
-                subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
-
+                self.use_cookies = False
+            self.save_config()
+    
+    def check_spotdl(self):
+        """Check if spotdl is installed using utils"""
+        return self.utils.check_spotdl()       
+        
+    def check_ffmpeg(self):
+        """Check if ffmpeg is installed using utils"""
+        return self.utils.check_ffmpeg()
+    
+    def show_spotdl_help(self):
+        """Display yt-dlp help using utils"""
+        return self.utils.show_spotdl_help()
+        
+    def check_dependencies(self):
+        """Check for missing dependencies using utils"""
+        return self.utils.check_dependencies()
+    
+    def setup_dependencies(self):
+        """Setup dependencies using utils"""
+        self.utils.setup_dependencies()
+    
+    def program_info(self):
+        """Display program information using utils"""
+        return self.utils.program_info()
+           
     def troubleshooting(self):
         """Run a diagnostic and suggest fixes."""
         Enhanced_Menu.clear_screen()
@@ -1355,14 +1192,9 @@ def main():
     ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝                                                                                                 
     {Style.RESET_ALL}""")
     print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
-
-    # Initialise downloader
-    if not Spotify_Downloader.check_dependencies():
-        print("\nMissing dependencies. Please install them and restart.")
-        sys.exit(1)
-
+    
     downloader = Spotify_Downloader()
-
+    
     # Menu actions
     def settings_menu():
         """Submenu for program settings."""
@@ -1430,12 +1262,12 @@ def main():
         6: downloader.download_user_playlist,
         7: downloader.download_user_liked_songs,
         8: downloader.download_user_saved_albums,
-        9: Spotify_Downloader.check_spotdl,
-        10: Spotify_Downloader.show_spotdl_help,
+        9: downloader.check_spotdl,
+        10: downloader.show_spotdl_help,
         11: settings_menu,
         12: downloader.troubleshooting,
         13: lambda: downloader.cookie_manager.interactive_menu(),
-        14: Spotify_Downloader.program_info,
+        14: downloader.program_info,
         15: exit_program
     }
 
@@ -1486,7 +1318,6 @@ def main():
                 except KeyboardInterrupt:
                     Enhanced_Menu.print_status("Interrupted", "warning")
                 except Exception as e:
-                    logger.error(f"Menu action error: {e}", exc_info=True)
                     Enhanced_Menu.print_status(f"Unexpected error: {e}", "error")
             else:
                 Enhanced_Menu.print_status("Invalid choice", "error")
@@ -1500,12 +1331,10 @@ def main():
             print("\nInterrupted by user")
             exit_program()
         except Exception as e:
-            logger.error(f"Main loop error: {e}", exc_info=True)
             if Enhanced_Menu.get_input("Continue?", "yn", default=True):
                 continue
             else:
                 exit_program()
-
 
 if __name__ == "__main__":
     try:
