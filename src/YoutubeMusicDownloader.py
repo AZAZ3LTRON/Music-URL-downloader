@@ -1107,7 +1107,58 @@ class Youtube_Downloader:
     def program_info(self):
         """Display program information using utils"""
         return self.utils.program_info()
-
+    
+    def troubleshooting(self):
+        """Troubleshooting"""
+        print("\n" + "=" * 50)
+        Enhanced_Menu.print_header("TROUBLESHOOTING", "")
+        print("=" * 50)
+        print("Hello, this troubleshooter is to help if you're experiencing problem in the program")
+        print("Running a simple diagnostic. This might take a while.....")
+        
+        # Step 1: Check if yt-dlp is installed
+        Enhanced_Menu.print_status("1. Checking yt-dlp installation...", "info")
+        if not Youtube_Downloader.check_ytdlp():
+            Enhanced_Menu.print_status("yt-dlp not found or not working", "error")
+            install = Enhanced_Menu.get_input("Install yt-dlp now? (y/n)", "yn", default=True)
+            if install:
+                Youtube_Downloader.setup_dependencies()
+        
+        # Step 2: Check for ffmpeg on path      
+        Enhanced_Menu.print_status("\n2. Checking FFmpeg installation...", "info")
+        if not Youtube_Downloader.check_ffmpeg():
+            Enhanced_Menu.print_status("FFmpeg not found (audio conversion might fail)", "error")
+        
+        # Check internet connection
+        Enhanced_Menu.print_status("\n3. Testing YouTube access...", "info")
+        test_url = "https://music.youtube.com/watch?v=215T8NF93kw"
+        try:
+            test_command = ["yt-dlp", "--skip-download", "--print-json", test_url]
+            result = subprocess.run(
+                test_command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0:
+                Enhanced_Menu.print_status("Can access YouTube", "success")
+            else:
+                Enhanced_Menu.print_status(f"Cannot access YouTube: {result.stderr[:100]}", "error")
+        except Exception as e:
+            Enhanced_Menu.print_status(f"Test failed: {e}", "error")
+        
+        # Check directories if they exist
+        Enhanced_Menu.print_status("\n4. Checking directories...", "info")
+        directories = ["Albums", "links"]
+        for directory in directories:
+            if os.path.exists(directory):
+                Enhanced_Menu.print_status(f"{directory}/ exists", "success")
+            else:
+                Enhanced_Menu.print_status(f"{directory}/ missing", "warning")
+        input("\nPress Enter to continue...")
+        return True
+    
     def reset_to_defaults(self):
         """Reset all settings to default values"""
         self.__output_directory = Path("Albums")

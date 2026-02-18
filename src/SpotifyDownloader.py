@@ -46,8 +46,8 @@ from colorama import init, Fore, Style
 init(autoreset=True)
 
 from EnhancedMenu import Enhanced_Menu
-from Logs_Handler import Logs_Manager
 from CookieManager import CookieManager
+from Logs_Handler import Logs_Manager
 from Downloader_Utils import DownloaderUtils
 
 """ =========================================== Pre Config ===========================================
@@ -83,11 +83,37 @@ class Spotify_Downloader:
         # Create necessary directories
         self._output_directory.mkdir(parents=True, exist_ok=True)
         Path("links").mkdir(parents=True, exist_ok=True)
-        try:
-            # Load configuration
-            self.load_config()
-        except Exception as e:
-            self.log_manager.log_manager.log_error("Error loading config")
+
+        # Load configuration
+        self.load_config()
+
+    # -----------------------------------------------------------------
+    # Properties for public access to settings
+    # -----------------------------------------------------------------
+    @property
+    def output_directory(self) -> Path:
+        return self._output_directory
+
+    @output_directory.setter
+    def output_directory(self, value):
+        self._output_directory = Path(value)
+        self._output_directory.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def audio_quality(self) -> str:
+        return self._audio_quality
+
+    @audio_quality.setter
+    def audio_quality(self, value):
+        self._audio_quality = value
+
+    @property
+    def audio_format(self) -> str:
+        return self._audio_format
+
+    @audio_format.setter
+    def audio_format(self, value):
+        self._audio_format = value
 
     # -----------------------------------------------------------------
     # Configuration management
@@ -1074,28 +1100,17 @@ class Spotify_Downloader:
     # ====================================
     # Check Spotdl Functions
     # ===================================
-    def manage_cookies(self):
-        """Calls the cookie management menu"""
-        self.cookie_manager.interactive_menu()
-        if self.cookie_manager.current_cookie_file:
-            use_cookies = Enhanced_Menu.get_input("Enable cookies for future downloads? (y/n)", "yn", default=False)
-            if use_cookies:
-                self.use_cookies = True
-            else:
-                self.use_cookies = False
-            self.save_config()
-    
     def check_spotdl(self):
-        """Check if spotdl is installed using utils"""
-        return self.utils.check_spotdl()       
-        
+        """Check if ytdlp is installed using utils"""
+        return self.utils.check_spotdl()
+    
     def check_ffmpeg(self):
         """Check if ffmpeg is installed using utils"""
         return self.utils.check_ffmpeg()
     
     def show_spotdl_help(self):
         """Display yt-dlp help using utils"""
-        return self.utils.show_spotdl_help()
+        return self.utils.show_ytdlp_help()
         
     def check_dependencies(self):
         """Check for missing dependencies using utils"""
@@ -1108,7 +1123,7 @@ class Spotify_Downloader:
     def program_info(self):
         """Display program information using utils"""
         return self.utils.program_info()
-           
+
     def troubleshooting(self):
         """Run a diagnostic and suggest fixes."""
         Enhanced_Menu.clear_screen()
@@ -1133,49 +1148,13 @@ class Spotify_Downloader:
             Enhanced_Menu.print_status(f"Spotify access issue: {msg}", "error")
         # directories
         Enhanced_Menu.print_status("\n4. Checking directories...", "info")
-        for d in ["log", "Albums", "links", "cookies"]:
+        for d in ["Albums", "links"]:
             p = Path(d)
-            if p.exists():
-                Enhanced_Menu.print_status(f"  {d}/ exists", "success")
+            if p.exists():                Enhanced_Menu.print_status(f"  {d}/ exists", "success")
             else:
                 Enhanced_Menu.print_status(f"  {d}/ missing (will be created)", "warning")
         input("\nPress Enter to continue...")
         return True
-
-    @staticmethod
-    def program_info():
-        """Display program information"""
-        Enhanced_Menu.clear_screen()
-        Enhanced_Menu.print_header("Spotify Downloader", "Interactive Spotify Music Downloader")
-
-        print(f"""
-                {Fore.CYAN}Description:{Style.RESET_ALL}
-                A comprehensive tool for downloading music from Spotify with support for 
-                albums, playlists, and individual tracks.
-
-                {Fore.CYAN}Features:{Style.RESET_ALL}
-                • Download single tracks from Spotify
-                • Download complete albums from Spotify
-                • Download playlists with metadata preservation
-                • Batch download from text files
-                • Search and download songs by name
-                • Download personal playlists, liked songs, and saved albums (with authentication)
-                • Customizable audio format and quality
-                • Progress tracking with visual feedback
-
-                {Fore.CYAN}Supported Bitrates:{Style.RESET_ALL}
-                320k, 256k, 128k, etc.
-
-                {Fore.CYAN}Supported Audio Formats:{Style.RESET_ALL}
-                MP3, M4A, FLAC, OGG, OPUS, WAV
-
-                {Fore.CYAN}Usage Tips:{Style.RESET_ALL}
-                • Use authentication for personal content
-                • Configure settings before large downloads
-                • Use batch files for multiple downloads
-                • Monitor disk space for large downloads
-        """)
-
 
 def main():
     """Main menu loop."""
@@ -1192,9 +1171,9 @@ def main():
     ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝                                                                                                 
     {Style.RESET_ALL}""")
     print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
-    
+
     downloader = Spotify_Downloader()
-    
+
     # Menu actions
     def settings_menu():
         """Submenu for program settings."""
@@ -1262,12 +1241,12 @@ def main():
         6: downloader.download_user_playlist,
         7: downloader.download_user_liked_songs,
         8: downloader.download_user_saved_albums,
-        9: downloader.check_spotdl,
-        10: downloader.show_spotdl_help,
+        9: Spotify_Downloader.check_spotdl,
+        10: Spotify_Downloader.show_spotdl_help,
         11: settings_menu,
         12: downloader.troubleshooting,
         13: lambda: downloader.cookie_manager.interactive_menu(),
-        14: downloader.program_info,
+        14: Spotify_Downloader.program_info,
         15: exit_program
     }
 
@@ -1335,6 +1314,7 @@ def main():
                 continue
             else:
                 exit_program()
+
 
 if __name__ == "__main__":
     try:
