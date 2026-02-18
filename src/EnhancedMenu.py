@@ -17,6 +17,7 @@ class Enhanced_Menu:
         'menu_desc': f"{Fore.WHITE}",
         'success': f"{Fore.GREEN}{Style.BRIGHT}",
         'failure': f"{Fore.RED}{Style.BRIGHT}",
+        'warning': f"{Fore.LIGHTYELLOW_EX}{Style.BRIGHT}",
         'error': f"{Fore.YELLOW}{Style.BRIGHT}",
         'info': f"{Fore.CYAN}",
         'input': f"{Fore.GREEN}{Style.BRIGHT}",
@@ -102,7 +103,8 @@ class Enhanced_Menu:
             "success": {"color": "success", "default_icon": "✓"},
             "failure": {"color": "failure", "default_icon": "✗"},
             "error": {"color": "error", "default_icon": "⚠"},
-            "info": {"color": "info", "default_icon": "ℹ"}
+            "info": {"color": "info", "default_icon": "ℹ"},
+            "warning": {"color": "info", "default_icon": "⚠"}
         }
         config = status_config.get(status_type, status_config["info"])
         icon_to_use = icon or config["default_icon"]
