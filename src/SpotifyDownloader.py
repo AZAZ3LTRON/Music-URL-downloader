@@ -67,6 +67,9 @@ class Spotify_Downloader:
         self.max_retries = MAX_RETRIES
         self.retry_delay = RETRY_DELAY
         self.download_timeout = DOWNLOAD_TIMEOUT
+        self.client_id = None
+        self.client_secret = None
+        self.auth_token = None
 
         # Private configuration attributes
         self._output_directory = Path("Albums")
@@ -74,23 +77,22 @@ class Spotify_Downloader:
         self._audio_format = "mp3"
         self._filepath = Path("links/spotify_links.txt")
         self._configuration_file = Path("config/spotify_downloader.json")
-
-        self.cookie_manager = CookieManager()
+        self.cookie_manager = CookieManager(config_path=self._configuration_file)
         self.log_manager = Logs_Manager()
-        self.utils = DownloaderUtils()
-        
-        self.client_id = self.cookie_manager._client_id
-        self.client_secret = self.cookie_manager._client_secret
-        self.auth_token = self.cookie_manager._auth_token
-        self.cache_path = self.cookie_manager._cache_path
-        self.use_cookies = False
+        self.utils = DownloaderUtils()      
+        # Load configuration
+        self.load_config()
+    
+        # After loading config, sync credentials to cookie manager
+        self.cookie_manager.set_credentials(
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            auth_token=self.auth_token,
+        )
 
         # Create necessary directories
         self._output_directory.mkdir(parents=True, exist_ok=True)
         Path("links").mkdir(parents=True, exist_ok=True)
-
-        # Load configuration
-        self.load_config()
 
     # -----------------------------------------------------------------
     # Properties for public access to settings (Do not delete)
@@ -136,7 +138,6 @@ class Spotify_Downloader:
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "auth_token": self.auth_token,
-            "cache_path": self.cache_path
         }
 
         try:
@@ -169,9 +170,12 @@ class Spotify_Downloader:
                 self.client_secret = config["client_secret"]
             if "auth_token" in config:
                 self.auth_token = config["auth_token"]
-            if "cache_path" in config:
-                self.cache_path = config["cache_path"]
                 
+            self.cookie_manager.set_credentials(
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            auth_token=self.auth_token
+    )        
         except Exception as e:
             self.log_manager.log_error(f"Error loading configuration: {e}")
             # Use defaults
@@ -182,7 +186,6 @@ class Spotify_Downloader:
             self.client_id = primary_config["client_id"]
             self.client_secret = primary_config["client_secret"]
             self.auth_token = primary_config["auth_token"]
-            self.cache_path = primary_config["cache_path"]
 
     def save_config(self, config: Dict = None):
         """Save configuration to file"""
@@ -199,7 +202,6 @@ class Spotify_Downloader:
                     "client_id": self.client_id,
                     "client_secret": self.client_secret,
                     "auth_token": self.auth_token,
-                    "cache_path": self.cache_path
                 }
 
             # Ensure config directory exists
@@ -223,9 +225,16 @@ class Spotify_Downloader:
         self.client_id = None
         self.client_secret = None
         self.auth_token = None
-        self.cache_path = None
+        self.cookie_manager.set_credentials()   # clear them in cookie manager
         self.save_config()
         Enhanced_Menu.print_status("Configuration reset to defaults", "success")
+
+    def sync_credentials_from_cookie_manager(self):
+        """Copy credentials from cookie manager into self and save config."""
+        self.client_id = self.cookie_manager._client_id
+        self.client_secret = self.cookie_manager._client_secret
+        self.auth_token = self.cookie_manager._auth_token
+        self.save_config()
 
     # ====================================
     # Preference & Other Helpers
@@ -301,10 +310,9 @@ class Spotify_Downloader:
         print(" Region-restricted videos")
         print(" Private playlists")
 
+        Enhanced_Menu.print_status("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Manager to help you", "info")
         cookie_choice = Enhanced_Menu.get_input("Use cookies for authentication? (y/n):- ", "yn", default=True)
-        self.use_cookies = cookie_choice  # cookie_choice is boolean
-        if self.use_cookies:
-            Enhanced_Menu.print_status("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Manager to help you", "info")
+        self.use_cookies = cookie_choice  # cookie_choice is boolean            
 
     @staticmethod
     def validate_spotify_url(url: str) -> Tuple[bool, Optional[str]]:
@@ -468,7 +476,6 @@ class Spotify_Downloader:
         def decorator(func):
             last_called = [0.0]
             call_lock = threading.Lock()
-
             @wraps(func)
             def wrapper(*args, **kwargs):
                 with call_lock:
@@ -492,8 +499,7 @@ class Spotify_Downloader:
         """ Run spotdl download with modern syntax """
         command = [
             "spotdl",
-            "download",
-            url,
+            "download", url,
             "--output", output_template,
             "--overwrite", "skip",
             "--bitrate", self.audio_quality,
@@ -502,10 +508,8 @@ class Spotify_Downloader:
         
         # Authentication flags (only if values exist)
         if self.client_id and self.client_secret:
-            command.extend(["--user-auth", "--client-id", self.client_id,
+            command.extend(["--client-id", self.client_id,
                             "--client-secret", self.client_secret])
-            if self.cache_path:
-                command.extend(["--cache-path", str(self.cache_path)])
         if self.auth_token:
             command.extend(["--auth-token", self.auth_token])
 
@@ -926,7 +930,6 @@ class Spotify_Downloader:
             self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: '{song_query}'")
             return False
 
-
     # ====================================
     # Special Download Functions
     # ===================================
@@ -957,7 +960,6 @@ class Spotify_Downloader:
                 "--user-auth",
                 "--client-id", self.client_id,
                 "--client-secret", self.client_secret,
-                "--cache-path", self.cache_path,
                 "--output", output_template,
                 "--overwrite", "skip",
                 "--bitrate", self.audio_quality,
@@ -1012,7 +1014,6 @@ class Spotify_Downloader:
                 "--user-auth",
                 "--client-id", self.client_id,
                 "--client-secret", self.client_secret,
-                "--cache-path", self.cache_path,
                 "--output", output_template,
                 "--overwrite", "skip",
                 "--bitrate", self.audio_quality,
@@ -1068,7 +1069,6 @@ class Spotify_Downloader:
                 "--user-auth",
                 "--client-id", self.client_id,
                 "--client-secret", self.client_secret,
-                "--cache-path", self.cache_path,
                 "--output", output_template,
                 "--overwrite", "skip",
                 "--bitrate", self.audio_quality,
@@ -1249,12 +1249,12 @@ def main():
         6: downloader.download_user_playlist,
         7: downloader.download_user_liked_songs,
         8: downloader.download_user_saved_albums,
-        9: Spotify_Downloader.check_spotdl,
-        10: Spotify_Downloader.show_spotdl_help,
+        9: downloader.check_spotdl,
+        10: downloader.show_spotdl_help,
         11: settings_menu,
         12: downloader.troubleshooting,
         13: lambda: downloader.cookie_manager.interactive_menu(),
-        14: Spotify_Downloader.program_info,
+        14: downloader.program_info,
         15: exit_program
     }
 
@@ -1287,10 +1287,15 @@ def main():
             Enhanced_Menu.print_menu_item(14, "About")
             Enhanced_Menu.print_menu_item(15, "Exit")
 
-            print(
-                f"\n{Style.DIM}Current settings: {downloader.audio_format.upper()} / {downloader.audio_quality} / {downloader.output_directory}{Style.RESET_ALL}")
+            print(f"\n{Style.DIM}Current settings: {downloader.audio_format.upper()} / {downloader.audio_quality} / {downloader.output_directory}{Style.RESET_ALL}")
 
             choice = Enhanced_Menu.get_input("Enter choice", "int", 1, 15)
+            if choice == 13:
+                downloader.cookie_manager.interactive_menu()
+                downloader.sync_credentials_from_cookie_manager()   # <-- add this line
+                input("\nPress Enter to continue...")
+                continue   # or let the loop handle the return to menu
+            
             if choice == 15:
                 exit_program()
             action = actions.get(choice)
@@ -1314,6 +1319,7 @@ def main():
                     continue
                 else:
                     exit_program()
+                    
         except KeyboardInterrupt:
             print("\nInterrupted by user")
             exit_program()
@@ -1322,7 +1328,6 @@ def main():
                 continue
             else:
                 exit_program()
-
 
 if __name__ == "__main__":
     try:

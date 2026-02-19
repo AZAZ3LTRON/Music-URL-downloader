@@ -9,6 +9,8 @@ from typing import List, Optional, Dict, Any
 import browser_cookie3
 from colorama import init, Fore, Style
 import requests  # moved import to top
+import json
+
 
 init(autoreset=True)
 
@@ -19,19 +21,18 @@ os.makedirs(COOKIE_DIRECTORY, exist_ok=True)
 
 class CookieManager:
     """Manages cookies for authentication"""
-
-    def __init__(self):
+    def __init__(self, config_path: Optional[Path] = None):
         self.cookie_directory = Path(COOKIE_DIRECTORY)
         self.cookie_directory.mkdir(exist_ok=True)
         self.current_cookie_file: Optional[Path] = None
+        self.config_path = Path("config/spotify_downloader.json")
         self.use_auth = False
-
-        # Spotify Web API credentials (for spotdl)
-        self._client_id: Optional[str] = None
-        self._client_secret: Optional[str] = None
-        self._auth_token: Optional[str] = None
-        self._cache_path: Optional[Path] = None
-
+        
+        # Load credentials from the config file
+        self._client_id = None
+        self._client_secret = None
+        self._auth_token = None
+        
         self.cookie_sources: Dict[str, Any] = {
             'chrome': browser_cookie3.chrome,
             'firefox': browser_cookie3.firefox,
@@ -51,7 +52,67 @@ class CookieManager:
         }
 
         self.is_admin = self._check_admin()
-
+        self._load_credentials()
+        
+    def _load_credentials(self):
+        """Load Spotify credentials from the main config file."""
+        if not self.config_path.exists():
+            return
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            self._client_id = config.get("client_id")
+            self._client_secret = config.get("client_secret")
+            self._auth_token = config.get("auth_token")
+        except Exception as e:
+            Enhanced_Menu.print_status(f"Failed to load credentials from config: {e}", "error")
+            
+    def set_credentials(self, client_id=None, client_secret=None, auth_token=None):
+        """Set Spotify credentials (used to sync from downloader)."""
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._auth_token = auth_token
+    
+    def save_credentials(self):
+        """Write current credentials back to the main config file."""
+        if not self.config_path.exists():
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # Load existing config to preserve other keys
+            if self.config_path.exists():
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {}
+            # Update only the Spotify keys
+            config["client_id"] = self._client_id
+            config["client_secret"] = self._client_secret
+            config["auth_token"] = self._auth_token
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+            Enhanced_Menu.print_status("Spotify credentials saved to config.", "success")
+        except Exception as e:
+            Enhanced_Menu.print_status(f"Failed to save credentials: {e}", "error")
+            
+    def clear_spotify_credentials(self):
+        """Remove Spotify credentials from config and instance."""
+        self._client_id = None
+        self._client_secret = None
+        self._auth_token = None
+        # Remove keys from config file
+        try:
+            if self.config_path.exists():
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                config.pop("client_id", None)
+                config.pop("client_secret", None)
+                config.pop("auth_token", None)
+                with open(self.config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=2)
+                Enhanced_Menu.print_status("Spotify credentials cleared from config.", "success")
+        except Exception as e:
+            Enhanced_Menu.print_status(f"Failed to clear credentials: {e}", "error")
+                     
     def _check_admin(self) -> bool:
         """Check if script is running with admin privileges on Windows"""
         if platform.system() == "Windows":
@@ -59,8 +120,7 @@ class CookieManager:
                 return ctypes.windll.shell32.IsUserAnAdmin() != 0
             except Exception:
                 return False
-        return True
-
+        return True            
     def get_status(self):
         """Check available browser cookies and report status."""
         Enhanced_Menu.print_header("Checking available browser cookies....")
@@ -353,12 +413,79 @@ class CookieManager:
         except Exception as e:
             Enhanced_Menu.print_status(f"Error testing cookies: {e}", "error")
             return False
+        
+    def get_auth_key(self) -> Optional[str]:
+        """
+        Execute the curl command to obtain a Spotify access token using client credentials.
+        Returns the access token string or None on failure.
+        """
+        if not self._client_id or not self._client_secret:
+            Enhanced_Menu.print_status(
+                "Client ID and Secret are required. Please run spotify_auth first.",
+                "error"
+            )
+            return None
 
+        # Check if curl is available
+        if not shutil.which("curl"):
+            Enhanced_Menu.print_status("curl not found in PATH. Please install curl.", "error")
+            return None
+
+        # Build the command (Windows line continuation characters removed)
+        command = [
+            "curl", "-X", "POST",
+            "https://accounts.spotify.com/api/token",
+            "-H", "Content-Type: application/x-www-form-urlencoded",
+            "-d", f"grant_type=client_credentials&client_id={self._client_id}&client_secret={self._client_secret}"
+        ]
+
+        Enhanced_Menu.print_status("Requesting access token from Spotify...", "info")
+
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30
+            )
+
+            if result.returncode != 0:
+                Enhanced_Menu.print_status(f"curl failed with error:\n{result.stderr}", "error")
+                return None
+
+            # Parse JSON response
+            try:
+                response = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                Enhanced_Menu.print_status("Failed to parse JSON response from Spotify.", "error")
+                Enhanced_Menu.print_status(f"Raw output: {result.stdout[:200]}", "debug")
+                return None
+
+            # Extract access token
+            access_token = response.get("access_token")
+            if access_token:
+                self._auth_token = access_token
+                Enhanced_Menu.print_status("Access token obtained successfully.", "success")
+                return access_token
+            else:
+                error_msg = response.get("error", "Unknown error")
+                error_desc = response.get("error_description", "")
+                Enhanced_Menu.print_status(f"Spotify error: {error_msg} {error_desc}", "error")
+                return None
+
+        except subprocess.TimeoutExpired:
+            Enhanced_Menu.print_status("curl command timed out after 30 seconds.", "error")
+            return None
+        except Exception as e:
+            Enhanced_Menu.print_status(f"Unexpected error while obtaining auth key: {e}", "error")
+            return None        
+           
     def spotify_auth(self):
-        """Use spotdl's built‑in authentication."""
+        """Use spotdl's built‑in authentication with automatic token fetching."""
         Enhanced_Menu.print_header("\n🎵 Starting Spotify authentication...")
 
-        # Get Client ID
+        # Get Client ID (with instructions)
         while True:
             client_id = Enhanced_Menu.get_input(
                 "Enter the Client ID of your Spotify Web API (or 'get' for instructions): ",
@@ -394,35 +521,80 @@ class CookieManager:
             self._client_secret = client_secret
             break
 
-        # Get Auth Token (optional)
-        auth_token = Enhanced_Menu.get_input(
-            "Enter the Auth Token of your Spotify Web API (optional, press Enter to skip): ",
-            "str"
-        )
-        self._auth_token = auth_token if auth_token else None
-
-        # Cache path
-        cache_path = Enhanced_Menu.get_input("Enter cache location (default: cache): ", "str").strip()
-        if cache_path:
-            self._cache_path = Path(cache_path)
+        # Auto‑fetch token if both credentials are present
+        if self._client_id and self._client_secret:
+            Enhanced_Menu.print_status("Attempting to fetch access token using client credentials...", "info")
+            token = self.get_auth_key()          # sets self._auth_token and returns it
+            if token:
+                Enhanced_Menu.print_status("Access token obtained successfully.", "success")
+            else:
+                Enhanced_Menu.print_status("Failed to obtain access token automatically.", "error")
+                # Offer manual token entry
+                manual = Enhanced_Menu.get_input(
+                    "Would you like to enter an access token manually? (y/n): ",
+                    "yn",
+                    default=False
+                )
+                if manual:
+                    while True:
+                        auth_token = Enhanced_Menu.get_input(
+                            "Enter the Auth Token (or 'get' for instructions): ",
+                            "str"
+                        )
+                        if not auth_token:
+                            self._auth_token = None
+                            Enhanced_Menu.print_status("No Auth Token provided, continuing without token.", "warning")
+                            break
+                        if auth_token.lower() == 'get':
+                            print(" 1. Go to this link: https://developer.spotify.com/documentation/web-api/tutorials/getting-started")
+                            print(" 2. Scroll down to the area where it says 'Request an access token'")
+                            print(" 3. Follow the instructions given to acquire your access token.")
+                            print(" Note: The auth token/access token only lasts for an hour, so best to renew consistently")
+                            continue
+                        self._auth_token = auth_token
+                        break
         else:
-            self._cache_path = Path("cache")
+            # Credentials missing; optionally ask for manual token
+            Enhanced_Menu.print_status("Client ID and/or Secret not provided. Automatic token fetch skipped.", "info")
+            manual = Enhanced_Menu.get_input(
+                "Would you like to enter an access token manually? (y/n): ",
+                "yn",
+                default=False
+            )
+            if manual:
+                while True:
+                    auth_token = Enhanced_Menu.get_input(
+                        "Enter the Auth Token (or 'get' for instructions): ",
+                        "str"
+                    )
+                    if not auth_token:
+                        self._auth_token = None
+                        Enhanced_Menu.print_status("No Auth Token provided, continuing without token.", "warning")
+                        break
+                    if auth_token.lower() == 'get':
+                        print(" 1. Go to this link: https://developer.spotify.com/documentation/web-api/tutorials/getting-started")
+                        print(" 2. Scroll down to the area where it says 'Request an access token'")
+                        print(" 3. Follow the instructions given to acquire your access token.")
+                        print(" Note: The auth token/access token only lasts for an hour, so best to renew consistently")
+                        continue
+                    self._auth_token = auth_token
+                    break
 
         # Check if spotdl is installed
         if not shutil.which("spotdl"):
             Enhanced_Menu.print_status("spotdl not found in PATH. Please install it first.", "error")
             return False
 
-        # Build command
-        command = ["spotdl", "--user-auth"]
+        # Build base command
+        command = ["spotdl", "download", "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT", ]
         if self._client_id:
             command += ["--client-id", self._client_id]
         if self._client_secret:
             command += ["--client-secret", self._client_secret]
         if self._auth_token:
             command += ["--auth-token", self._auth_token]
-        command += ["--cache-path", str(self._cache_path)]
 
+        # Test authentication with a dry run
         try:
             process = subprocess.run(
                 command,
@@ -431,9 +603,11 @@ class CookieManager:
             )
             if process.returncode == 0:
                 Enhanced_Menu.print_status("Authentication successful!", "success")
+                self.save_credentials()
                 return True
             else:
                 Enhanced_Menu.print_status("Authentication failed", "error")
+                self.save_credentials()
                 if process.stderr:
                     print(process.stderr)
                 return False
@@ -462,6 +636,7 @@ class CookieManager:
             process = subprocess.run(
                 [
                     "yt-dlp",
+                    "--netrc",
                     "--cookies", str(self.current_cookie_file),
                     "--username", username,
                     "--password", password,

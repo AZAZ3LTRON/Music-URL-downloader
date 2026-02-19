@@ -45,7 +45,7 @@ class Logs_Manager:
         """Setup all log with format and configuration"""
         
         # log format
-        log_format = logging.Formatter("YT-DLP - %(asctime)s - %(levelname)s - %(funcName)s - %(lineno)d - %(message)s")
+        log_format = logging.Formatter("%(asctime)s - %(levelname)s - %(funcName)s - %(lineno)d - %(message)s")
         error_format = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
         
         # Successful downloads log
