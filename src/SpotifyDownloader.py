@@ -78,6 +78,11 @@ class Spotify_Downloader:
         self.cookie_manager = CookieManager()
         self.log_manager = Logs_Manager()
         self.utils = DownloaderUtils()
+        
+        self.client_id = self.cookie_manager._client_id
+        self.client_secret = self.cookie_manager._client_secret
+        self.auth_token = self.cookie_manager._auth_token
+        self.cache_path = self.cookie_manager._cache_path
         self.use_cookies = False
 
         # Create necessary directories
@@ -88,7 +93,7 @@ class Spotify_Downloader:
         self.load_config()
 
     # -----------------------------------------------------------------
-    # Properties for public access to settings
+    # Properties for public access to settings (Do not delete)
     # -----------------------------------------------------------------
     @property
     def output_directory(self) -> Path:
@@ -127,7 +132,11 @@ class Spotify_Downloader:
             "max_retries": self.max_retries,
             "retry_delay": self.retry_delay,
             "download_timeout": self.download_timeout,
-            "use_cookies": False
+            "use_cookies": False,
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "auth_token": self.auth_token,
+            "cache_path": self.cache_path
         }
 
         try:
@@ -154,7 +163,15 @@ class Spotify_Downloader:
                 self.download_timeout = config["download_timeout"]
             if "use_cookies" in config:
                 self.use_cookies = config["use_cookies"]
-
+            if "client_id" in config:
+                self.client_id = config["client_id"]
+            if "client_secret" in config:
+                self.client_secret = config["client_secret"]
+            if "auth_token" in config:
+                self.auth_token = config["auth_token"]
+            if "cache_path" in config:
+                self.cache_path = config["cache_path"]
+                
         except Exception as e:
             self.log_manager.log_error(f"Error loading configuration: {e}")
             # Use defaults
@@ -162,6 +179,10 @@ class Spotify_Downloader:
             self.audio_quality = primary_config["audio_quality"]
             self.audio_format = primary_config["audio_format"]
             self.use_cookies = primary_config["use_cookies"]
+            self.client_id = primary_config["client_id"]
+            self.client_secret = primary_config["client_secret"]
+            self.auth_token = primary_config["auth_token"]
+            self.cache_path = primary_config["cache_path"]
 
     def save_config(self, config: Dict = None):
         """Save configuration to file"""
@@ -174,7 +195,11 @@ class Spotify_Downloader:
                     "max_retries": self.max_retries,
                     "retry_delay": self.retry_delay,
                     "download_timeout": self.download_timeout,
-                    "use_cookies": self.use_cookies
+                    "use_cookies": self.use_cookies,
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "auth_token": self.auth_token,
+                    "cache_path": self.cache_path
                 }
 
             # Ensure config directory exists
@@ -195,6 +220,10 @@ class Spotify_Downloader:
         self.retry_delay = RETRY_DELAY
         self.download_timeout = DOWNLOAD_TIMEOUT
         self.use_cookies = False
+        self.client_id = None
+        self.client_secret = None
+        self.auth_token = None
+        self.cache_path = None
         self.save_config()
         Enhanced_Menu.print_status("Configuration reset to defaults", "success")
 
@@ -388,29 +417,49 @@ class Spotify_Downloader:
             return False, f"Validation error: {str(e)[:100]}", None
 
     def parse_size(self, size_str: str) -> Optional[int]:
-        """Parse size string to bytes"""
-        size_str = size_str.strip().upper()
+        """
+        Convert a size string (e.g., '3.45 MiB', '1.2GB', '5M') into bytes.
+        Supports both base‑10 (KB, MB) and base‑2 (KiB, MiB) units.
+        Returns an integer number of bytes, or None if the string cannot be parsed.
+        """
+        if not size_str:
+            return None
 
-        units = {
-            'B': 1, 'K': 1024, 'M': 1024 ** 2, 'G': 1024 ** 3, 'T': 1024 ** 4,
-            'KB': 1024, 'MB': 1024 ** 2, 'GB': 1024 ** 3, 'TB': 1024 ** 4,
-            'KIB': 1024, 'MIB': 1024 ** 2, 'GIB': 1024 ** 3, 'TIB': 1024 ** 4
-        }
-
-        match = re.match(r'([\d\.]+)\s*(\w*)', size_str)
+        size_str = size_str.strip()
+        # Regex: captures numeric part and optional unit (e.g., 'MiB', 'KB', 'M')
+        match = re.match(r'^([\d.]+)\s*([kmgt]?(?:i?b)?)$', size_str, re.IGNORECASE)
         if not match:
             return None
 
-        value, unit = match.groups()
+        num_str, unit = match.groups()
+        unit = unit.upper() if unit else ''
+
         try:
-            value = float(value)
-            if not unit:
-                return int(value)
-            if unit in units:
-                return int(value * units[unit])
+            value = float(num_str)
         except ValueError:
             return None
-        return None
+
+        multipliers = {
+            'B':   1,
+            'KB':  10**3,
+            'MB':  10**6,
+            'GB':  10**9,
+            'TB':  10**12,
+            'KIB': 1024,
+            'MIB': 1024**2,
+            'GIB': 1024**3,
+            'TIB': 1024**4,
+            'K':   10**3,
+            'M':   10**6,
+            'G':   10**9,
+            'T':   10**12,
+        }
+
+        multiplier = multipliers.get(unit)
+        if multiplier is None:
+            return None
+
+        return int(value * multiplier)
 
     # ==================================== The Download Function ===================================
     @staticmethod
@@ -450,14 +499,20 @@ class Spotify_Downloader:
             "--bitrate", self.audio_quality,
             "--format", self.audio_format
         ]
+        
+        # Authentication flags (only if values exist)
+        if self.client_id and self.client_secret:
+            command.extend(["--user-auth", "--client-id", self.client_id,
+                            "--client-secret", self.client_secret])
+            if self.cache_path:
+                command.extend(["--cache-path", str(self.cache_path)])
+        if self.auth_token:
+            command.extend(["--auth-token", self.auth_token])
 
-        if self.use_cookies:
-            cookie_args = self.cookie_manager.get_arguments()
-            if cookie_args:
-                command.extend(cookie_args)
-                self.log_manager.log_success("Using cookies from authentication")
-            else:
-                self.log_manager.log_error("No active cookies found")
+        # Cookies (from CookieManager)
+        if self.use_cookies and self.cookie_manager.current_cookie_file:
+            command.extend(["--cookie-file", str(self.cookie_manager.current_cookie_file)])
+            self.log_manager.log_success("Using cookies from authentication")
 
         if additional_args:
             command.extend(additional_args)
@@ -552,207 +607,147 @@ class Spotify_Downloader:
     # ====================================
     # Main Download Functions
     # ===================================
-    @rate_limit(calls_per_minute=30)
-    def download_track(self):
-        """Download a single track"""
+    def _download_item(self, item_type: str, url_prompt: str, output_template: str, additional_args: list = None, confirm_large: bool = False):
+        """Unified download function for tracks, albums, and playlists"""
         while True:
+            print("\n" + "=" * 55)
             Enhanced_Menu.clear_screen()
-            Enhanced_Menu.print_header("Download Track")
-            url = Enhanced_Menu.get_input("Enter Spotify track URL (or 'back')", "str")
-            if url and url.lower() == "back":
+            Enhanced_Menu.print_header(f"Download {item_type.title()}")
+
+            # Get URL from user
+            url = Enhanced_Menu.get_input(f"Enter Spotify {url_prompt} (or 'back' to return)", "str")
+            if url and url.lower() == 'back':
                 return False
+
             if not url:
                 Enhanced_Menu.print_status("No URL provided", "error")
                 continue
 
+            # Validate URL format
             valid, typ = self.validate_spotify_url(url)
             if not valid:
-                Enhanced_Menu.print_status("Invalid Spotify URL", "error")
+                Enhanced_Menu.print_status("Invalid Spotify URL. Enter a valid Spotify URL", "error")
                 continue
-            if typ != "track":
-                Enhanced_Menu.print_status(f"URL is a {typ}, not a track", "error")
-                proceed = Enhanced_Menu.get_input("Continue anyway?", "yn", default=False)
-                if not proceed:
-                    continue
 
-            # Validate
+            # Validate resource availability
             Enhanced_Menu.print_status("Validating resource...", "info")
-            available, msg, meta = self.validate_resource(url)
-            if not available:
-                Enhanced_Menu.print_status(f"Validation failed: {msg}", "error")
+            is_available, message, metadata = self.validate_resource(url)
+            if not is_available:
+                Enhanced_Menu.print_status(f"Validation failed: {message}", "error")
                 retry = Enhanced_Menu.get_input("Try to download anyway?", "yn", default=True)
                 if not retry:
                     continue
             else:
-                Enhanced_Menu.print_status(msg, "success")
-                if meta:
+                Enhanced_Menu.print_status(f"Resource validated: {message}", "success")
+                if metadata:
                     print(f"\n{Fore.CYAN}Track details:{Style.RESET_ALL}")
-                    print(f"  Title:  {Fore.YELLOW}{meta.get('name', 'Unknown')}{Style.RESET_ALL}")
-                    artists = meta.get('artists', [{}])
+                    print(f"  Title:  {Fore.YELLOW}{metadata.get('name', 'Unknown')}{Style.RESET_ALL}")
+                    artists = metadata.get('artists', [{}])
                     if artists:
                         print(f"  Artist: {Fore.YELLOW}{artists[0].get('name', 'Unknown')}{Style.RESET_ALL}")
-                    duration = meta.get('duration', 0)
+                    duration = metadata.get('duration', 0)
                     if duration:
                         print(f"  Duration: {Fore.YELLOW}{duration // 60}:{duration % 60:02d}{Style.RESET_ALL}")
 
-            # Optional config
-            if Enhanced_Menu.get_input("Configure download settings?", "yn", default=False):
+                # For large playlists/albums, show count and ask for confirmation
+                if confirm_large and metadata:
+                    tracks = metadata.get('tracks', [])
+                    track_count = len(tracks)
+                    if track_count > 50:
+                        Enhanced_Menu.print_status(
+                            f"This {item_type} contains {track_count} items. This may take a while.",
+                            "warning"
+                        )
+                        if not Enhanced_Menu.get_input("Continue with download? (y/n)", "yn", default=False):
+                            Enhanced_Menu.print_status("Download cancelled", "info")
+                            continue
+
+            # Get user preferences if they want to configure
+            if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
                 self.get_user_preferences()
 
-            output_template = str(self.output_directory / "{artists} - {title}.{output-ext}")
-            success = False
-            for attempt in range(1, self.max_retries + 1):
-                Enhanced_Menu.print_status(f"Attempt {attempt}/{self.max_retries}", "info")
-                if attempt > 1:
-                    Enhanced_Menu.print_status(f"Waiting {self.retry_delay} seconds before retry...", "info")
-                    time.sleep(self.retry_delay)
-                if self.run_download(url, output_template):
-                    success = True
-                    break
+            Enhanced_Menu.print_status(f"Starting {item_type} download...", "info")
+
+            # Attempt download with retries
+            success = self._download_with_retry(url, output_template, additional_args, item_type)
+
             if success:
-                self.log_manager.log_success(f"Successfully downloaded {url}")
-                another = Enhanced_Menu.get_input("Download another track?", "yn", default=True)
+                time.sleep(0.5)  # Small delay for clean UI
+                # Ask if user wants to download another
+                another = Enhanced_Menu.get_input(f"\nDownload another {item_type}? (y/n): ", "yn", default=True)
                 if another:
                     continue
                 else:
                     return True
             else:
-                self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: {url}")
-                return False
+                # Download failed after all retries
+                retry = Enhanced_Menu.get_input(f"\nDownload failed. Try another {item_type}? (y/n): ", "yn", default=True)
+                if retry:
+                    continue
+                else:
+                    return False
 
-    @rate_limit(calls_per_minute=30)
+    def _download_with_retry(self, url: str, output_template: str, additional_args: list = None, item_type: str = "item") -> bool:
+        """Unified retry logic for downloads"""
+        for attempt in range(1, self.max_retries + 1):
+            Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{self.max_retries})")
+
+            if attempt > 1:
+                print(f"Waiting {self.retry_delay} seconds before retry...")
+                time.sleep(self.retry_delay)
+
+            try:
+                success = self.run_download(url, output_template, additional_args)
+                if success:
+                    self.log_manager.log_success(f"Successfully downloaded {item_type}: {url}")
+
+                    # Clean up empty directories after successful download
+                    if item_type in ['album', 'playlist']:
+                        self.cleanup_directory()
+
+                    return True
+                else:
+                    # run_download returned False, treat as failure
+                    if attempt == self.max_retries:
+                        self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
+                    else:
+                        self.log_manager.log_error(f"Attempt {attempt} failed for {item_type}")
+            except Exception as e:
+                self.log_manager.log_error(f"Unexpected error in attempt {attempt}: {e}")
+                if attempt == self.max_retries:
+                    self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
+
+        return False
+
+    # Replace the original functions with simplified versions
+    def download_track(self):
+        """Download a single track"""
+        return self._download_item(
+            item_type="track",
+            url_prompt="track URL",
+            output_template=str(self.output_directory / "{artists} - {title}.{output-ext}"),
+            confirm_large=False
+        )
+
     def download_album(self):
         """Download an album"""
-        while True:
-            Enhanced_Menu.clear_screen()
-            Enhanced_Menu.print_header("Download Album")
-            url = Enhanced_Menu.get_input("Enter Spotify album URL (or 'back')", "str")
-            if url and url.lower() == "back":
-                return False
-            if not url:
-                Enhanced_Menu.print_status("No URL provided", "error")
-                continue
+        return self._download_item(
+            item_type="album",
+            url_prompt="album URL",
+            output_template=str(self.output_directory / "{artists}/{album}/{artist} - {title}.{output-ext}"),
+            confirm_large=True
+        )
 
-            valid, typ = self.validate_spotify_url(url)
-            if not valid:
-                Enhanced_Menu.print_status("Invalid Spotify URL", "error")
-                continue
-            if typ != "album":
-                Enhanced_Menu.print_status(f"URL is a {typ}, not an album", "error")
-                proceed = Enhanced_Menu.get_input("Continue anyway?", "yn", default=False)
-                if not proceed:
-                    continue
-
-            Enhanced_Menu.print_status("Validating album...", "info")
-            available, msg, meta = self.validate_resource(url)
-            if not available:
-                Enhanced_Menu.print_status(f"Validation failed: {msg}", "error")
-                retry = Enhanced_Menu.get_input("Try to download anyway?", "yn", default=True)
-                if not retry:
-                    continue
-            else:
-                Enhanced_Menu.print_status(msg, "success")
-                if meta:
-                    print(f"\n{Fore.CYAN}Album details:{Style.RESET_ALL}")
-                    print(f"  Album:  {Fore.YELLOW}{meta.get('name', 'Unknown')}{Style.RESET_ALL}")
-                    artists = meta.get('artists', [{}])
-                    if artists:
-                        print(f"  Artist: {Fore.YELLOW}{artists[0].get('name', 'Unknown')}{Style.RESET_ALL}")
-                    tracks = meta.get('tracks', [])
-                    if tracks:
-                        avail = sum(1 for t in tracks if t.get('available', True))
-                        print(f"  Tracks: {Fore.YELLOW}{avail}/{len(tracks)} available{Style.RESET_ALL}")
-
-            if Enhanced_Menu.get_input("Configure download settings?", "yn", default=False):
-                self.get_user_preferences()
-
-            output_template = str(self.output_directory / "{artists}/{album}/{artist} - {title}.{output-ext}")
-            success = False
-            for attempt in range(1, self.max_retries + 1):
-                Enhanced_Menu.print_status(f"Attempt {attempt}/{self.max_retries}", "info")
-                if attempt > 1:
-                    Enhanced_Menu.print_status(f"Waiting {self.retry_delay} seconds before retry...", "info")
-                    time.sleep(self.retry_delay)
-                if self.run_download(url, output_template):
-                    success = True
-                    break
-            if success:
-                self.log_manager.log_success(f"Successfully downloaded {url}")
-                another = Enhanced_Menu.get_input("Download another album?", "yn", default=True)
-                if another:
-                    continue
-                else:
-                    return True
-            else:
-                self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: {url}")
-                return False
-
-    @rate_limit(calls_per_minute=30)
     def download_playlist(self):
         """Download a playlist"""
-        while True:
-            Enhanced_Menu.clear_screen()
-            Enhanced_Menu.print_header("Download Playlist")
-            url = Enhanced_Menu.get_input("Enter Spotify playlist URL (or 'back')", "str")
-            if url and url.lower() == "back":
-                return False
-            if not url:
-                Enhanced_Menu.print_status("No URL provided", "error")
-                continue
+        return self._download_item(
+            item_type="playlist",
+            url_prompt="playlist URL",
+            output_template=str(self.output_directory / "{playlist}/{artists} - {title}.{output-ext}"),
+            confirm_large=True,
+            additional_args=["--yes-playlist"]  # Ensure playlist is downloaded fully
+        )
 
-            valid, typ = self.validate_spotify_url(url)
-            if not valid:
-                Enhanced_Menu.print_status("Invalid Spotify URL", "error")
-                continue
-            if typ != "playlist":
-                Enhanced_Menu.print_status(f"URL is a {typ}, not a playlist", "error")
-                proceed = Enhanced_Menu.get_input("Continue anyway?", "yn", default=False)
-                if not proceed:
-                    continue
-
-            Enhanced_Menu.print_status("Validating playlist...", "info")
-            available, msg, meta = self.validate_resource(url)
-            if not available:
-                Enhanced_Menu.print_status(f"Validation failed: {msg}", "error")
-                retry = Enhanced_Menu.get_input("Try to download anyway?", "yn", default=True)
-                if not retry:
-                    continue
-            else:
-                Enhanced_Menu.print_status(msg, "success")
-                if meta:
-                    print(f"\n{Fore.CYAN}Playlist details:{Style.RESET_ALL}")
-                    print(f"  Playlist: {Fore.YELLOW}{meta.get('name', 'Unknown')}{Style.RESET_ALL}")
-                    tracks = meta.get('tracks', [])
-                    if tracks:
-                        avail = sum(1 for t in tracks if t.get('available', True))
-                        print(f"  Tracks: {Fore.YELLOW}{avail}/{len(tracks)} available{Style.RESET_ALL}")
-
-            if Enhanced_Menu.get_input("Configure download settings?", "yn", default=False):
-                self.get_user_preferences()
-
-            output_template = str(self.output_directory / "{playlist}/{artists} - {title}.{output-ext}")
-            extra = ["--playlist-numbering", "--playlist-retain-track-cover"]
-            success = False
-            for attempt in range(1, self.max_retries + 1):
-                Enhanced_Menu.print_status(f"Attempt {attempt}/{self.max_retries}", "info")
-                if attempt > 1:
-                    Enhanced_Menu.print_status(f"Waiting {self.retry_delay} seconds before retry...", "info")
-                    time.sleep(self.retry_delay)
-                if self.run_download(url, output_template, additional_args=extra):
-                    success = True
-                    break
-            if success:
-                self.log_manager.log_success(f"Successfully downloaded {url}")
-                another = Enhanced_Menu.get_input("Download another playlist?", "yn", default=True)
-                if another:
-                    continue
-                else:
-                    return True
-            else:
-                self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: {url}")
-                return False
-
-    @rate_limit(calls_per_minute=30)
     def download_from_file(self) -> bool:
         """Batch download from a text file containing one URL per line."""
         Enhanced_Menu.clear_screen()
@@ -803,7 +798,6 @@ class Spotify_Downloader:
         validation_results = {}
         if val_choice in (1, 3):
             Enhanced_Menu.print_status(f"Validating {len(urls_to_process)} URLs...", "info")
-            skip_cache = (val_choice == 3)
             for i, url in enumerate(urls_to_process, 1):
                 print(f"  {i}/{len(urls_to_process)}: {url[:60]}...")
                 available, msg, _ = self.validate_resource(url)
@@ -900,7 +894,6 @@ class Spotify_Downloader:
         Enhanced_Menu.print_status(f"Total: {len(urls_to_download)}", "info")
         return failed_count == 0
 
-    @rate_limit(calls_per_minute=30)
     def search_and_download(self) -> bool:
         """Search for a song by name and download."""
         Enhanced_Menu.clear_screen()
@@ -933,10 +926,10 @@ class Spotify_Downloader:
             self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: '{song_query}'")
             return False
 
+
     # ====================================
     # Special Download Functions
     # ===================================
-    @rate_limit(calls_per_minute=30)
     def download_user_playlist(self):
         """Download a user's playlist (requires authentication)"""
         Enhanced_Menu.clear_screen()
@@ -962,6 +955,9 @@ class Spotify_Downloader:
                 "download",
                 "all-user-playlists",
                 "--user-auth",
+                "--client-id", self.client_id,
+                "--client-secret", self.client_secret,
+                "--cache-path", self.cache_path,
                 "--output", output_template,
                 "--overwrite", "skip",
                 "--bitrate", self.audio_quality,
@@ -990,7 +986,6 @@ class Spotify_Downloader:
             self.log_manager.log_error(f"Unexpected exception: {e}")
             return False
 
-    @rate_limit(calls_per_minute=30)
     def download_user_liked_songs(self):
         """Download a user's liked songs"""
         Enhanced_Menu.clear_screen()
@@ -1015,6 +1010,9 @@ class Spotify_Downloader:
                 "download",
                 "saved",
                 "--user-auth",
+                "--client-id", self.client_id,
+                "--client-secret", self.client_secret,
+                "--cache-path", self.cache_path,
                 "--output", output_template,
                 "--overwrite", "skip",
                 "--bitrate", self.audio_quality,
@@ -1043,7 +1041,6 @@ class Spotify_Downloader:
             self.log_manager.log_error(f"Unexpected exception: {e}")
             return False
 
-    @rate_limit(calls_per_minute=30)
     def download_user_saved_albums(self):
         """Download a user's saved albums"""
         Enhanced_Menu.clear_screen()
@@ -1069,6 +1066,9 @@ class Spotify_Downloader:
                 "download",
                 "all-user-saved-albums",
                 "--user-auth",
+                "--client-id", self.client_id,
+                "--client-secret", self.client_secret,
+                "--cache-path", self.cache_path,
                 "--output", output_template,
                 "--overwrite", "skip",
                 "--bitrate", self.audio_quality,
@@ -1101,25 +1101,29 @@ class Spotify_Downloader:
     # Check Spotdl Functions
     # ===================================
     def check_spotdl(self):
-        """Check if ytdlp is installed using utils"""
+        """Check if spotdl is installed using utils"""
         return self.utils.check_spotdl()
-    
+
     def check_ffmpeg(self):
         """Check if ffmpeg is installed using utils"""
         return self.utils.check_ffmpeg()
-    
+
     def show_spotdl_help(self):
-        """Display yt-dlp help using utils"""
-        return self.utils.show_ytdlp_help()
-        
+        """Display spotdl help"""
+        try:
+            result = subprocess.run(["spotdl", "--help"], capture_output=True, text=True)
+            print(result.stdout)
+        except Exception as e:
+            print(f"Error showing help: {e}")
+
     def check_dependencies(self):
         """Check for missing dependencies using utils"""
         return self.utils.check_dependencies()
-    
+
     def setup_dependencies(self):
         """Setup dependencies using utils"""
         self.utils.setup_dependencies()
-    
+
     def program_info(self):
         """Display program information using utils"""
         return self.utils.program_info()
@@ -1134,7 +1138,10 @@ class Spotify_Downloader:
         Enhanced_Menu.print_status("1. Checking spotdl...", "info")
         if not self.check_spotdl():
             if Enhanced_Menu.get_input("Install spotdl now?", "yn", default=True):
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "spotdl"])
+                try:
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", "spotdl"])
+                except Exception as e:
+                    Enhanced_Menu.print_status(f"Installation failed: {e}", "error")
         # ffmpeg
         Enhanced_Menu.print_status("\n2. Checking ffmpeg...", "info")
         self.check_ffmpeg()
@@ -1150,7 +1157,8 @@ class Spotify_Downloader:
         Enhanced_Menu.print_status("\n4. Checking directories...", "info")
         for d in ["Albums", "links"]:
             p = Path(d)
-            if p.exists():                Enhanced_Menu.print_status(f"  {d}/ exists", "success")
+            if p.exists():
+                Enhanced_Menu.print_status(f"  {d}/ exists", "success")
             else:
                 Enhanced_Menu.print_status(f"  {d}/ missing (will be created)", "warning")
         input("\nPress Enter to continue...")
