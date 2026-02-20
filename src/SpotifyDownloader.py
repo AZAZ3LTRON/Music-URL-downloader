@@ -364,8 +364,6 @@ class Spotify_Downloader:
 
     def validate_resource(self, url: str) -> Tuple[bool, str, Optional[dict]]:
         """ Validate if a resource is available before downloading to the device """
-        print(f"Validating resource: {url}")
-
         cmd = [
             "spotdl",
             url,
@@ -416,7 +414,7 @@ class Spotify_Downloader:
                 elif "quota" in err or "rate limit" in err:
                     return False, "Rate limit exceeded, try later", None
                 else:
-                    return False, f"Validation failed: {err[:100]}", None
+                    return False, f"{err[:100]}", None
         except subprocess.TimeoutExpired:
             return False, "Validation timeout", None
         except FileNotFoundError:
@@ -516,7 +514,6 @@ class Spotify_Downloader:
         # Cookies (from CookieManager)
         if self.use_cookies and self.cookie_manager.current_cookie_file:
             command.extend(["--cookie-file", str(self.cookie_manager.current_cookie_file)])
-            self.log_manager.log_success("Using cookies from authentication")
 
         if additional_args:
             command.extend(additional_args)
@@ -598,7 +595,6 @@ class Spotify_Downloader:
                     self.log_manager.log_success(f"Downloaded: {url}")
                     return True
                 else:
-                    self.log_manager.log_failure(f"Download failed (code {result.returncode}): {url}")
                     return False
             except subprocess.TimeoutExpired:
                 result.kill()
@@ -637,7 +633,7 @@ class Spotify_Downloader:
             Enhanced_Menu.print_status("Validating resource...", "info")
             is_available, message, metadata = self.validate_resource(url)
             if not is_available:
-                Enhanced_Menu.print_status(f"Validation failed: {message}", "error")
+                Enhanced_Menu.print_status(f"{message}", "error")
                 retry = Enhanced_Menu.get_input("Try to download anyway?", "yn", default=True)
                 if not retry:
                     continue
@@ -729,7 +725,7 @@ class Spotify_Downloader:
         return self._download_item(
             item_type="track",
             url_prompt="track URL",
-            output_template=str(self.output_directory / "{artists} - {title}.{output-ext}"),
+            output_template=str(self.output_directory / "{artist} - {title}.{output-ext}"),
             confirm_large=False
         )
 
@@ -738,7 +734,7 @@ class Spotify_Downloader:
         return self._download_item(
             item_type="album",
             url_prompt="album URL",
-            output_template=str(self.output_directory / "{artists}/{album}/{artist} - {title}.{output-ext}"),
+            output_template=str(self.output_directory / "{artist}/{album}/{artist} - {title}.{output-ext}"),
             confirm_large=True
         )
 
@@ -747,7 +743,7 @@ class Spotify_Downloader:
         return self._download_item(
             item_type="playlist",
             url_prompt="playlist URL",
-            output_template=str(self.output_directory / "{playlist}/{artists} - {title}.{output-ext}"),
+            output_template=str(self.output_directory / "{playlist}/{artist} - {title}.{output-ext}"),
             confirm_large=True,
             additional_args=["--yes-playlist"]  # Ensure playlist is downloaded fully
         )

@@ -3,4 +3,6 @@ __pycache__
 links
 cookies
 gui
-cache
+
+config
+spotify_downloader.json
