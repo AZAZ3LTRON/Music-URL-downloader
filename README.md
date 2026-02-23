@@ -34,4 +34,6 @@ Unfortuntely, this program was developed on a Windows machine, however, I have p
 
 As of 18th of Febraury, A Web API from Spotify Downloader will be required to download from Spotify as they have begun to crack down on Piracy due to a massive database scrap of about 300TB occuring last year. Their new policy requires that you pay for the Web API to do this.
 
-spotdl download https://open.spotify.com/track/0bM9c5A7CterSOEssmWqAa --client-id 2562110a6d974603b50bf0fd76927293 --client-secret 371cf8fe99aa423188eebdf4784be347 --auth-token BQDOux5LAAnVOLhHVOL5XP4JD7CvxuD_3Iz3g2Ye6GkQ64r7UFZlC9q2oGxgXvVFKDEI7CZEYqK4XaoqGr7KCF2qMSKJT2LPe1DblEKRrvet-PXqIKU4spmknCUEU1mnXVtR185ykAM
+spotdl download https://open.spotify.com/track/0bM9c5A7CterSOEssmWqAa --output {artist} - {title}.{output-ext} --ovewrite skip --bitrate 320k --format mp3 --client-id 2562110a6d974603b50bf0fd76927293 --client-secret 371cf8fe99aa423188eebdf4784be347 --auth-token BQDOux5LAAnVOLhHVOL5XP4JD7CvxuD_3Iz3g2Ye6GkQ64r7UFZlC9q2oGxgXvVFKDEI7CZEYqK4XaoqGr7KCF2qMSKJT2LPe1DblEKRrvet-PXqIKU4spmknCUEU1mnXVtR185ykAM
+
+spotdl download https://open.spotify.com/track/0bM9c5A7CterSOEssmWqAa --bitrate 320k --format mp3 --auth-token BQBh2PIqhwVnCpfwewRg4Byqs6acRBrwx6vvwqqsacpGEbHhN6T-PmtTYOTABSsTegsuqBLYB6wmq2xRbcBUCQZEZGAkAtbCCD2a08mSAXLYAVdUNCIah1S8ahax-R4uZxabsL5RpfE

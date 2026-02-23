@@ -499,7 +499,6 @@ class Spotify_Downloader:
             "spotdl",
             "download", url,
             "--output", output_template,
-            "--overwrite", "skip",
             "--bitrate", self.audio_quality,
             "--format", self.audio_format
         ]
@@ -592,7 +591,6 @@ class Spotify_Downloader:
                 # Wait for process to finish with timeout
                 result.wait(timeout=self.download_timeout)
                 if result.returncode == 0:
-                    self.log_manager.log_success(f"Downloaded: {url}")
                     return True
                 else:
                     return False
@@ -665,8 +663,6 @@ class Spotify_Downloader:
             # Get user preferences if they want to configure
             if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
                 self.get_user_preferences()
-
-            Enhanced_Menu.print_status(f"Starting {item_type} download...", "info")
 
             # Attempt download with retries
             success = self._download_with_retry(url, output_template, additional_args, item_type)
