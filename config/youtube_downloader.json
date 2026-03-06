@@ -5,5 +5,5 @@
   "max_retries": 3,
   "retry_delay": 10,
   "download_timeout": 120,
-  "use_cookies": false
+  "use_cookies": true
 }

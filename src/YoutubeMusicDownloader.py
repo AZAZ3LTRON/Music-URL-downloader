@@ -85,6 +85,9 @@ class Youtube_Downloader:
         self.utils = DownloaderUtils()
         self.use_cookies = False
         self.__output_directory.mkdir(parents=True, exist_ok=True)
+        self._archives_dir = Path("archives")
+        
+        self._archives_dir.mkdir(exist_ok=True)
         Path("links").mkdir(parents=True, exist_ok=True)
         try:
             self.load_config()
@@ -260,6 +263,18 @@ class Youtube_Downloader:
                 return match.group(1)
         return None
 
+    def extract_playlist_id(self, url: str) -> Optional[str]:
+        """Extract playlist ID from a YouTube playlist/album URL."""
+        patterns = [
+            r'[?&]list=([^&]+)',           # Standard playlist parameter
+            r'/playlist\?list=([^&]+)',     # /playlist?list=...
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        return None
+
     def validate_resource(self, url: str) -> Tuple[bool, str, Optional[Dict]]:
         """Validate if a resource is available before downloading to the device"""
         try:
@@ -376,10 +391,10 @@ class Youtube_Downloader:
         
         # For cookie options
         if self.use_cookies and self.cookie_manager.current_cookie_file:
-            cookie_args = self.cookie_manager.get_arguments()
+            cookie_args = self.cookie_manager.get_arguments_ytdlp()
             if cookie_args:
                 command.extend(cookie_args)
-                self.log_manager.log_success("Using cookies from authentication")
+                self.log_manager.log_success("Using cookies for better authentication")
             else:
                 self.log_manager.log_error("Error using cookies")
                 
@@ -537,7 +552,7 @@ class Youtube_Downloader:
         return decorator
 
     #  ============================================= Main Download functions =============================================
-    def _download_item(self, item_type: str, url_prompt: str, output_template: str, additional_args: list = None, confirm_large: bool = False):
+    def _download_item(self, item_type: str, url_prompt: str, output_template: str, additional_args: list = None, confirm_large: bool = False, use_archive: bool = False):
         """Unified download function for tracks, albums, and playlists"""
         while True:
             print("\n" + "=" * 55)
@@ -562,15 +577,9 @@ class Youtube_Downloader:
             Enhanced_Menu.print_status("Validating resource...", "info")
             is_valid, message, metadata = self.validate_resource(url)
             
-            if not is_valid:
-                Enhanced_Menu.print_status(f"Resource validation failed: {message}", "failure")
-                self.log_manager.log_failure(f"Resource validation failed for {url}: {message}")
-                continue
-            else:
-                Enhanced_Menu.print_status(f"Resource validated: {message}", "success")
-                
+            if is_valid and metadata:
                 # For large playlists/albums, show count and ask for confirmation
-                if confirm_large and metadata:
+                if confirm_large and metadata.get('playlist_count', 0) > 50:
                     if 'playlist_count' in metadata:
                         count = metadata['playlist_count']
                         if count > 50:  # Arbitrary threshold
@@ -581,7 +590,21 @@ class Youtube_Downloader:
                             if not Enhanced_Menu.get_input("Continue with download? (y/n)", "yn", default=False):
                                 Enhanced_Menu.print_status("Download cancelled", "info")
                                 continue
-            
+                
+                # Add archive argument for playlists/albums if requested
+                if use_archive:
+                    playlist_id = self.extract_playlist_id(url)
+                    if playlist_id:
+                        archive_path = self._archives_dir / f"{playlist_id}.txt"
+                        
+                        # Ensure the archive directory exists (already done in __init__)
+                        if additional_args is None:
+                            additional_args = []
+                        additional_args(["--download-archive", str(archive_path)])
+                        self.log_manager.log_success(f"Using archive: {archive_path}")
+                    else:
+                        self.log_manager.log_warning(f"Could not extract playlist ID from {url}, archive not used ")
+                
             # Get user preferences if they want to configure
             if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
                 self.get_user_preferences()

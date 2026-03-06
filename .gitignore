@@ -3,6 +3,7 @@ __pycache__
 links
 cookies
 gui
-
+archives
 config
 spotify_downloader.json
+youtube_downloader.json
