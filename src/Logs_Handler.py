@@ -8,6 +8,7 @@ import json
 import sys
 import os
 from colorama import init, Fore, Style
+import threading
 
 from CookieManager import CookieManager
 from EnhancedMenu import Enhanced_Menu
@@ -24,6 +25,7 @@ class Logs_Manager:
         self.success_log_path = self.log_dir / "success.log"
         self.failed_log_path = self.log_dir / "failed.log"
         self.error_log_path = self.log_dir / "error.log"
+        self._lock = threading.Lock()
         
         # Initialize loggers
         self.success_logger = None
@@ -87,24 +89,27 @@ class Logs_Manager:
     # ========== Logging Methods ==============
     def log_success(self, message: str, console: bool = True):
         """ Log successful music downloads"""
-        if self.success_logger:
-            self.success_logger.info(message)
-        if console and self.console_logger:
-            self.console_logger.info(f"{self.color_map['success']}{message}{Style.RESET_ALL}")
+        with self._lock:
+            if self.success_logger:
+                self.success_logger.info(message)
+            if console and self.console_logger:
+                self.console_logger.info(f"{self.color_map['success']}{message}{Style.RESET_ALL}")
         
     def log_failure(self, message: str, console: bool = True):
         """ Log failed music downloads"""
-        if self.failed_logger:
-            self.failed_logger.info(message)
-        if console and self.console_logger:
-            self.console_logger.info(f"{self.color_map['failed']}{message}{Style.RESET_ALL}")
+        with self._lock:
+            if self.failed_logger:
+                self.failed_logger.info(message)
+            if console and self.console_logger:
+                self.console_logger.info(f"{self.color_map['failed']}{message}{Style.RESET_ALL}")
             
     def log_error(self, message: str, exc_info=False, console: bool = True):
         """ Log error during music download process"""
-        if self.error_logger:
-            self.error_logger.error(message, exc_info=exc_info)
-        if console and self.console_logger:
-            self.console_logger.info(f"{self.color_map['error']}{message}{Style.RESET_ALL}")
+        with self._lock:
+            if self.error_logger:
+                self.error_logger.error(message, exc_info=exc_info)
+            if console and self.console_logger:
+                self.console_logger.info(f"{self.color_map['error']}{message}{Style.RESET_ALL}")
     
     # =============== Log Statistics & Other function ============
     def log_statistics(self):

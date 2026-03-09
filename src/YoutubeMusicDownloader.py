@@ -40,6 +40,7 @@ import re
 import urllib.parse
 from urllib.parse import urlparse
 from typing import List, Dict, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import json
 from tqdm import tqdm
@@ -49,21 +50,17 @@ from CookieManager import CookieManager
 from EnhancedMenu import Enhanced_Menu
 from Logs_Handler import Logs_Manager
 from Downloader_Utils import DownloaderUtils
+from Helpers_Validators import Helpers   # <-- new helpers module
 
 init(autoreset=True)
 
-""" =========================================== Pre Config ===========================================
-This part of the pre-configuration of the downloader, it can be change. Each part is explained below:
-* MAX_RETRIES - No of times the downloader can retry on a link (subject to change)
-* RETRY_DELAY - The delay between each retry (subject to change)
-======================================================================================================= """
-
+# ============================= Pre Config =============================
 MAX_RETRIES = 3
 RETRY_DELAY = 10
 DOWNLOAD_TIMEOUT = 120
 COOKIE_DIRECTORY = r"cookies"
-
 os.makedirs(COOKIE_DIRECTORY, exist_ok=True)
+
 
 class Youtube_Downloader:
     """Downloader Class that handles the downloading process"""
@@ -74,27 +71,29 @@ class Youtube_Downloader:
             MAX_RETRIES = 3
             RETRY_DELAY = 5
             DOWNLOAD_TIMEOUT = 300
-            
+
         self.__output_directory = Path("Albums")
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.__filepath = r"links/youtube_links.txt"
         self.__configuration_file = r"config/youtube_downloader.json"
         self.cookie_manager = CookieManager()
-        self.log_manager = Logs_Manager()
+        self.log_manager = Logs_Manager()          # must be thread‑safe now
         self.utils = DownloaderUtils()
         self.use_cookies = False
         self.__output_directory.mkdir(parents=True, exist_ok=True)
-        self._archives_dir = Path("archives")
-        
-        self._archives_dir.mkdir(exist_ok=True)
+
+        # FIX: use public attribute, not _archives_dir
+        self.archives_dir = Path("archives")
+        self.archives_dir.mkdir(exist_ok=True)
+
         Path("links").mkdir(parents=True, exist_ok=True)
         try:
             self.load_config()
         except Exception as e:
             self.log_manager.log_error(f"Error loading config: {e}")
 
-    # ============================================= Configuration Managers ===========================================
+    # ==================== Configuration Managers ====================
     def load_config(self):
         """Load configuration from json file"""
         primary_config = {
@@ -114,6 +113,7 @@ class Youtube_Downloader:
             else:
                 config = primary_config
                 self.save_config(config)
+
             if "output_directory" in config:
                 self.__output_directory = Path(config["output_directory"])
             if "audio_quality" in config:
@@ -147,14 +147,16 @@ class Youtube_Downloader:
         except Exception as e:
             self.log_manager.log_error(f"Error saving configuration: {e}")
 
-    #  ============================================= Helper Functions & Resource Validation Functions =============================================
+    # ==================== User preferences (stays in main class) ====================
     def get_user_preferences(self):
         """Takes in user input for the download settings"""
         Enhanced_Menu.print_header("Download Settings", "Configure your music conversion preferences")
-        
-        # Handles audio quality of music conversion       
+
+        # Audio quality
         while True:
-            audio_quality_input = Enhanced_Menu.get_input("What bitrate would you like (enter 'choice' to see options): ", "str", default=self.__audio_quality)
+            audio_quality_input = Enhanced_Menu.get_input(
+                "What bitrate would you like (enter 'choice' to see options): ",
+                "str", default=self.__audio_quality)
             if not audio_quality_input:
                 self.__audio_quality = "320k"
                 break
@@ -173,10 +175,12 @@ class Youtube_Downloader:
                 self.__audio_quality = audio_quality_input.lower()
                 break
             Enhanced_Menu.print_status("Invalid bitrate. The downloader doesn't support these values", "error")
-            
-        # Handles audio format from the user
+
+        # Audio format
         while True:
-            audio_format_input = Enhanced_Menu.get_input("What format would you like (enter 'choice' to see options): ", "str", default=self.__audio_format)
+            audio_format_input = Enhanced_Menu.get_input(
+                "What format would you like (enter 'choice' to see options): ",
+                "str", default=self.__audio_format)
             if not audio_format_input:
                 self.__audio_format = "mp3"
                 break
@@ -193,15 +197,15 @@ class Youtube_Downloader:
                 self.__audio_format = audio_format_input
                 break
             Enhanced_Menu.print_status("Invalid format. Downloader doesn't support this format", "error")
-            
-        # Choose your output directory
+
+        # Output directory
         output_path = Enhanced_Menu.get_input("Enter output directory (default: Albums): ", "str").strip()
         if output_path:
             self.__output_directory = Path(output_path)
         else:
             self.__output_directory = Path("Albums")
         self.__output_directory.mkdir(parents=True, exist_ok=True)
-        
+
         # Cookie choice
         Enhanced_Menu.print_status("Cookie Settings", "info")
         print(f"\n{Fore.CYAN}Cookies can help with:{Style.RESET_ALL}")
@@ -215,158 +219,38 @@ class Youtube_Downloader:
         else:
             self.use_cookies = False
 
-    def validate_youtube_url(self, url: str) -> bool:
-        """Validate if the URL input is a proper YouTube URL"""
-        
-        # Subject to edit
-        youtube_patterns = [
-            r'^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+$',
-            r'^(https?://)?music\.youtube\.com/.+$',
-            r'^(https?://)?youtube\.com/watch\?v=[\w-]+(&.*)?$',
-            r'^(https?://)?youtube\.com/playlist\?list=[\w-]+(&.*)?$',
-            r'^(https?://)?youtu\.be/[\w-]+$'
-        ]
-        for pattern in youtube_patterns:
-            if re.match(pattern, url, re.IGNORECASE):
-                try:
-                    parsed = urllib.parse.urlparse(url)
-                    if parsed.scheme in ['http', 'https', ''] or parsed.netloc:
-                        return True
-                except:
-                    continue
-        return False
+    # ==================== Core download methods ====================
+    @staticmethod
+    def rate_limit(calls_per_minute=60):
+        """Rate limit decorator to avoid blockage from (Improved)"""
+        def decorator(func):
+            last_called = [0.0]
+            call_lock = threading.Lock()
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                with call_lock:
+                    elapsed_time = time.time() - last_called[0]
+                    wait_time = (60.0 / calls_per_minute) - elapsed_time
 
-    def cleanup_directory(self):
-        """Removes empty directories after download"""
-        removed_count = 0
-        for root, dirs, files in os.walk(self.__output_directory, topdown=False):
-            for dir_name in dirs:
-                dir_path = os.path.join(root, dir_name)
-                try:
-                    if not os.listdir(dir_path):
-                        os.rmdir(dir_path)
-                        removed_count += 1
-                except OSError:
-                    pass
-        if removed_count > 0:
-            self.log_manager.log_success("Cleaned up empty directories")
+                    if wait_time > 0:
+                        time.sleep(wait_time)
+                    last_called[0] = time.time()
 
-    def extract_youtube_id(self, url: str) -> str:
-        """Extract YouTube ID from URL"""
-        patterns = [
-            r'(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]+)',
-            r'youtube\.com/playlist\?list=([\w-]+)'
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(1)
-        return None
-
-    def extract_playlist_id(self, url: str) -> Optional[str]:
-        """Extract playlist ID from a YouTube playlist/album URL."""
-        patterns = [
-            r'[?&]list=([^&]+)',           # Standard playlist parameter
-            r'/playlist\?list=([^&]+)',     # /playlist?list=...
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(1)
-        return None
-
-    def validate_resource(self, url: str) -> Tuple[bool, str, Optional[Dict]]:
-        """Validate if a resource is available before downloading to the device"""
-        try:
-            # Run a small command 
-            command = ["yt-dlp",
-                       "--skip-download",
-                       "--flat-playlist",
-                       "--dump-json",        # <-- Added to get JSON metadata
-                       "--no-warnings",
-                       url]
-            result = subprocess.run(
-                command, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, text=True,
-                timeout=30, check=False
-            )
-            
-            # Check on output and get metadata
-            if result.returncode == 0:
-                try:
-                    # Handle multiple JSON lines (for playlists)
-                    metadata = None
-                    for line in result.stdout.strip().split('\n'):
-                        if line:
-                            metadata = json.loads(line)
-                            break
-                    
-                    if metadata:
-                        title = metadata.get('title', 'Unknown')
-                        if metadata.get('availability') == 'unavailable':
-                            return False, "Video unavailable", metadata
-                        return True, f"Available - {title}", metadata
-                    return True, "Music Resource Available", None
-                except json.JSONDecodeError:
-                    return True, "Music Resource Available", None
-            
-            # If result or output contains errors
-            else:
-                error_message = result.stderr.lower()
-                if "unavailable" in error_message:
-                    return False, "Resource unavailable", None
-                elif "private" in error_message:
-                    return False, "Restricted Access", None
-                elif "age restriction" in error_message:
-                    return False, "Age restricted video", None
-                elif "not found" in error_message:
-                    return False, "Resource not found", None
-                else:
-                    return False, f"Validation failed: {error_message[:100]}", None
-        except subprocess.TimeoutExpired:
-            return False, "Validation timeout", None
-        except Exception as e:
-            return False, f"Validation error: {str(e)[:100]}", None
-
-    def parse_size(self, size_str: str) -> Optional[int]:
-        """Parse size string to bytes"""
-        if not size_str:
-            return None
-        size_str = size_str.strip().upper()
-        
-        # Convert string of download size,
-        units = {
-            'B': 1, 'K': 1024, 'M': 1024 ** 2, 'G': 1024 ** 3, 'T': 1024 ** 4,
-            'KB': 1024, 'MB': 1024 ** 2, 'GB': 1024 ** 3, 'TB': 1024 ** 4,
-            'KIB': 1024, 'MIB': 1024 ** 2, 'GIB': 1024 ** 3, 'TIB': 1024 ** 4
-        }
-        
-        # Match with regex
-        match = re.match(r'([\d\.]+)\s*(\w*)', size_str)
-        if not match:
-            return None
-        
-        # Check for value in units
-        value, unit = match.groups()
-        try:
-            value = float(value)
-            if not unit:
-                return int(value)
-            if unit in units:
-                return int(value * units[unit])
-        except ValueError:
-            return None
-        return None
-
-    #  ============================================= Download Functions =============================================
+                    try:
+                        return func(*args, **kwargs)
+                    except Exception as e:
+                        last_called[0] = time.time() - (60.0 / calls_per_minute)
+                        raise
+            return wrapper
+        return decorator
+    
     def run_download(self, url: str, output_template: str, additional_args=None):
         """Run yt-dlp download with modern syntax & tqdm progress bar"""
-        
         # Ensure output directory exists
         output_directory = os.path.dirname(output_template)
         if output_directory:
             os.makedirs(output_directory, exist_ok=True)
-            
+
         command = [
             "yt-dlp",
             "-x",
@@ -388,8 +272,7 @@ class Youtube_Downloader:
             "--http-chunk-size", "10M",
             "--extractor-args", "youtube:player_client=android",
         ]
-        
-        # For cookie options
+
         if self.use_cookies and self.cookie_manager.current_cookie_file:
             cookie_args = self.cookie_manager.get_arguments_ytdlp()
             if cookie_args:
@@ -397,17 +280,15 @@ class Youtube_Downloader:
                 self.log_manager.log_success("Using cookies for better authentication")
             else:
                 self.log_manager.log_error("Error using cookies")
-                
-        # Additional arguments for specific downloads
+
         if additional_args:
             if isinstance(additional_args, list):
                 command.extend(additional_args)
             else:
                 command.append(additional_args)
         command.append(url)
-        
+
         try:
-            # Initialize progress bar with tqdm
             progress_bar = tqdm(
                 desc="Downloading",
                 unit="B",
@@ -417,8 +298,7 @@ class Youtube_Downloader:
                 bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
                 dynamic_ncols=True
             )
-            
-            # Start the subprocess
+
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
@@ -429,65 +309,59 @@ class Youtube_Downloader:
                 encoding='utf-8',
                 errors='replace'
             )
-            
-            # Parse output in real-time
-            output_lines = []  # capture all output for error analysis
+
+            output_lines = []
             for line in iter(process.stdout.readline, ''):
                 line = line.strip()
                 output_lines.append(line)
                 if "[download]" in line:
                     try:
-                        # Parse percentage
                         percent_match = re.search(r'(\d+\.?\d*)%', line)
                         if percent_match:
                             percent = float(percent_match.group(1))
                             progress_bar.set_description(f"{Fore.CYAN}Downloading: {percent:.1f}%{Style.RESET_ALL}")
-                        
-                        # Parse possible total download size
+
                         size_match = re.search(r'of\s+([\d\.]+\s*[KMGT]?i?B)', line)
                         if size_match and progress_bar.total is None:
                             total_str = size_match.group(1)
-                            total_bytes = self.parse_size(total_str)
+                            total_bytes = Helpers.parse_size(total_str)   # FIX: use Helpers
                             if total_bytes:
                                 progress_bar.total = total_bytes
-                                
-                        # Parse downloaded size
-                        downloaded_match = re.search(r'([\d\.]+\s*[KMGT]?i?B)\s+at', line) or \
-                                           re.search(r'([\d\.]+\s*[KMGT]?i?B)\s+ETA', line) or \
-                                           re.search(r'([\d\.]+\s*[KMGT]?i?B)\s*\/', line)
+
+                        downloaded_match = (re.search(r'([\d\.]+\s*[KMGT]?i?B)\s+at', line) or
+                                            re.search(r'([\d\.]+\s*[KMGT]?i?B)\s+ETA', line) or
+                                            re.search(r'([\d\.]+\s*[KMGT]?i?B)\s*\/', line))
                         if downloaded_match:
                             downloaded_str = downloaded_match.group(1)
-                            downloaded_bytes = self.parse_size(downloaded_str)
+                            downloaded_bytes = Helpers.parse_size(downloaded_str)
                             if downloaded_bytes:
                                 progress_bar.n = downloaded_bytes
-                                
-                        # Parse download speed
+
                         speed_match = re.search(r'at\s+([\d\.]+\s*[KMGT]?i?B/s)', line)
                         if speed_match:
                             speed = speed_match.group(1)
                             progress_bar.set_postfix_str(f"Speed: {speed}")
-                            
-                        # Parse Estimated download time
+
                         eta_match = re.search(r'ETA\s+([\d:]+)', line)
                         if eta_match:
                             eta = eta_match.group(1)
                             progress_bar.set_postfix_str(f"ETA: {eta}")
+
                         progress_bar.refresh()
                     except Exception:
                         continue
-                    
-                # If the download is completed or file already exists
+
                 if "100%" in line or "already been downloaded" in line or "[Merger]" in line:
                     if progress_bar.total and progress_bar.n < progress_bar.total:
                         progress_bar.n = progress_bar.total
                     progress_bar.set_description(f"{Fore.GREEN}Downloaded{Style.RESET_ALL}")
                     progress_bar.set_postfix_str("")
                     progress_bar.refresh()
-            
-            # Close progress bar and check command output
+
             process.wait()
             progress_bar.close()
             full_output = "\n".join(output_lines)
+
             if process.returncode == 0:
                 return subprocess.CompletedProcess(
                     args=command,
@@ -510,7 +384,6 @@ class Youtube_Downloader:
                 elif "ffmpeg" in full_output.lower():
                     error_msg += " - FFmpeg conversion error"
                 else:
-                    # extract first 200 chars of error
                     error_msg += f" - Error: {full_output[-200:] if full_output else 'Unknown'}"
                 self.log_manager.log_failure(error_msg)
                 raise subprocess.CalledProcessError(
@@ -530,152 +403,150 @@ class Youtube_Downloader:
                 progress_bar.close()
             raise
 
-    def rate_limit(calls_per_minute=60):
-        """Rate limit decorator to avoid blockage from (Improved)"""
-        def decorator(func):
-            last_called = [0.0]
-            call_lock = threading.Lock()
-            @wraps(func)
-            def wrapper(*args, **kwargs):
-                with call_lock:
-                    elapsed_time = time.time() - last_called[0]
-                    wait_time = (60.0 / calls_per_minute) - elapsed_time
-                    if wait_time > 0:
-                        time.sleep(wait_time)
-                    last_called[0] = time.time()
-                    try:
-                        return func(*args, **kwargs)
-                    except Exception as e:
-                        last_called[0] = time.time() - (60.0 / calls_per_minute)
-                        raise
-            return wrapper
-        return decorator
-
-    #  ============================================= Main Download functions =============================================
-    def _download_item(self, item_type: str, url_prompt: str, output_template: str, additional_args: list = None, confirm_large: bool = False, use_archive: bool = False):
-        """Unified download function for tracks, albums, and playlists"""
-        while True:
-            print("\n" + "=" * 55)
-            Enhanced_Menu.clear_screen()
-            Enhanced_Menu.print_header(f"Download {item_type.title()}")
-            
-            # Get URL from user
-            url = Enhanced_Menu.get_input(f"Enter YouTube Music {url_prompt} (or 'back' to return)", "str")
-            if url.lower() == 'back':
-                return False
-            
-            if not url:
-                Enhanced_Menu.print_status("No URL provided", "error")
-                continue
-            
-            # Validate URL format
-            if not self.validate_youtube_url(url):
-                Enhanced_Menu.print_status("Invalid YouTube URL. Enter a valid YouTube/YouTube Music URL", "error")
-                continue
-            
-            # Validate resource availability
-            Enhanced_Menu.print_status("Validating resource...", "info")
-            is_valid, message, metadata = self.validate_resource(url)
-            
-            if is_valid and metadata:
-                # For large playlists/albums, show count and ask for confirmation
-                if confirm_large and metadata.get('playlist_count', 0) > 50:
-                    if 'playlist_count' in metadata:
-                        count = metadata['playlist_count']
-                        if count > 50:  # Arbitrary threshold
-                            Enhanced_Menu.print_status(
-                                f"This {item_type} contains {count} items. This may take a while.", 
-                                "warning"
-                            )
-                            if not Enhanced_Menu.get_input("Continue with download? (y/n)", "yn", default=False):
-                                Enhanced_Menu.print_status("Download cancelled", "info")
-                                continue
-                
-                # Add archive argument for playlists/albums if requested
-                if use_archive:
-                    playlist_id = self.extract_playlist_id(url)
-                    if playlist_id:
-                        archive_path = self._archives_dir / f"{playlist_id}.txt"
-                        
-                        # Ensure the archive directory exists (already done in __init__)
-                        if additional_args is None:
-                            additional_args = []
-                        additional_args(["--download-archive", str(archive_path)])
-                        self.log_manager.log_success(f"Using archive: {archive_path}")
-                    else:
-                        self.log_manager.log_warning(f"Could not extract playlist ID from {url}, archive not used ")
-                
-            # Get user preferences if they want to configure
-            if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
-                self.get_user_preferences()
-            
-            Enhanced_Menu.print_status(f"Starting {item_type} download...", "info")
-            
-            # Attempt download with retries
-            success = self._download_with_retry(url, output_template, additional_args, item_type)
-            
-            if success:
-                time.sleep(0.5)  # Small delay for clean UI
-                
-                # Ask if user wants to download another
-                another = Enhanced_Menu.get_input(f"\nDownload another {item_type}? (y/n): ", "yn", default=True)
-                if another:
-                    continue
-                else:
-                    return True
-            else:
-                # Download failed after all retries
-                retry = Enhanced_Menu.get_input(f"\nDownload failed. Try another {item_type}? (y/n): ", "yn", default=True)
-                if retry:
-                    continue
-                else:
-                    return False
-
-    def _download_with_retry(self, url: str, output_template: str, additional_args: list = None, item_type: str = "item") -> bool:
+    # -------------------- Retry wrapper --------------------
+    def _download_with_retry(self, url: str, output_template: str, additional_args: list = None,
+                             item_type: str = "item") -> bool:
         """Unified retry logic for downloads"""
         for attempt in range(1, MAX_RETRIES + 1):
             Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{MAX_RETRIES})")
-            
             if attempt > 1:
                 print(f"Waiting {RETRY_DELAY} seconds before retry...")
                 time.sleep(RETRY_DELAY)
-            
+
             try:
                 result = self.run_download(url, output_template, additional_args)
-                
-                # Check if download was successful
                 if result and result.returncode == 0:
                     self.log_manager.log_success(f"Successfully downloaded {item_type}: {url}")
-                    
-                    # Clean up empty directories after successful download
                     if item_type in ['album', 'playlist']:
-                        self.cleanup_directory()
-                    
+                        Helpers.cleanup_directory(self.__output_directory, self.log_manager)
                     return True
                 else:
-                    # This shouldn't happen if run_download raises on error, but just in case
                     raise subprocess.CalledProcessError(
                         result.returncode if result else -1,
                         f"yt-dlp {url}",
                         output=result.stdout if result else "",
                         stderr=result.stderr if result else ""
                     )
-                    
             except subprocess.CalledProcessError as e:
                 error_msg = str(e)
                 if attempt < MAX_RETRIES:
                     self.log_manager.log_error(f"Attempt {attempt} failed for {item_type}: {error_msg[:100]}")
                 else:
                     self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
-                    
             except Exception as e:
                 self.log_manager.log_error(f"Unexpected error in attempt {attempt}: {e}")
                 if attempt == MAX_RETRIES:
                     self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
-        
         return False
 
-    # Replace the original functions with simplified versions
+    # -------------------- Concurrent helper --------------------
+    def _download_items_concurrently(self, tasks, max_workers=3, desc="Downloading"):
+        """
+        tasks: list of (url, output_template, additional_args, archive_path, task_id)
+        returns: dict {task_id: success_bool}
+        """
+        total = len(tasks)
+        results = {}
+        result_lock = threading.Lock()
+        archive_locks = {}
+        archive_locks_lock = threading.Lock()
+        pbar_lock = threading.Lock()
+
+        with tqdm(total=total, desc=desc, unit="items") as pbar:
+            def worker(url, tmpl, args, archive_path, task_id):
+                with archive_locks_lock:
+                    if archive_path not in archive_locks:
+                        archive_locks[archive_path] = threading.Lock()
+                    lock = archive_locks[archive_path]
+
+                with lock:
+                    success = self._download_with_retry(url, tmpl, args, "item")
+
+                with result_lock:
+                    results[task_id] = success
+                with pbar_lock:
+                    pbar.update(1)
+                return success
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = []
+                for url, tmpl, args, archive_path, tid in tasks:
+                    futures.append(executor.submit(worker, url, tmpl, args, archive_path, tid))
+                for future in as_completed(futures):
+                    pass   # exceptions already handled inside _download_with_retry
+
+        return results
+
+    # -------------------- Unified single‑item download (used by track/album) --------------------
+    def _download_item(self, item_type: str, url_prompt: str, output_template: str,
+                       additional_args: list = None, confirm_large: bool = False,
+                       use_archive: bool = False) -> bool:
+        """Unified download function for tracks, albums, and playlists"""
+        while True:
+            print("\n" + "=" * 55)
+            Enhanced_Menu.clear_screen()
+            Enhanced_Menu.print_header(f"Download {item_type.title()}")
+
+            url = Enhanced_Menu.get_input(f"Enter YouTube Music {url_prompt} (or 'back' to return)", "str")
+            if url.lower() == 'back':
+                return False
+            if not url:
+                Enhanced_Menu.print_status("No URL provided", "error")
+                continue
+
+            # Validate URL format
+            if not Helpers.validate_youtube_url(url):
+                Enhanced_Menu.print_status("Invalid YouTube URL. Enter a valid YouTube/YouTube Music URL", "error")
+                continue
+
+            # Validate resource availability (using YouTube helper)
+            Enhanced_Menu.print_status("Validating resource...", "info")
+            is_valid, message, metadata = Helpers.validate_resource_youtube(url)
+
+            if is_valid and metadata:
+                if confirm_large and metadata.get('playlist_count', 0) > 50:
+                    count = metadata['playlist_count']
+                    Enhanced_Menu.print_status(
+                        f"This {item_type} contains {count} items. This may take a while.",
+                        "warning"
+                    )
+                    if not Enhanced_Menu.get_input("Continue with download? (y/n)", "yn", default=False):
+                        Enhanced_Menu.print_status("Download cancelled", "info")
+                        continue
+
+                if use_archive:
+                    playlist_id = Helpers.extract_youtube_playlist_id(url)
+                    if playlist_id:
+                        archive_path = self.archives_dir / f"{playlist_id}.txt"
+                        if additional_args is None:
+                            additional_args = []
+                        additional_args.extend(["--download-archive", str(archive_path)])
+                        self.log_manager.log_success(f"Using archive: {archive_path}")
+                    else:
+                        self.log_manager.log_warning(f"Could not extract playlist ID from {url}, archive not used")
+
+            # Ask for configuration if desired
+            if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+                self.get_user_preferences()
+
+            Enhanced_Menu.print_status(f"Starting {item_type} download...", "info")
+            success = self._download_with_retry(url, output_template, additional_args, item_type)
+
+            if success:
+                time.sleep(0.5)
+                another = Enhanced_Menu.get_input(f"\nDownload another {item_type}? (y/n): ", "yn", default=True)
+                if another:
+                    continue
+                else:
+                    return True
+            else:
+                retry = Enhanced_Menu.get_input(f"\nDownload failed. Try another {item_type}? (y/n): ", "yn", default=True)
+                if retry:
+                    continue
+                else:
+                    return False
+
+    # ==================== Public download methods ====================
     def download_track(self):
         """Download a single track"""
         return self._download_item(
@@ -691,20 +562,94 @@ class Youtube_Downloader:
             item_type="album",
             url_prompt="album URL",
             output_template=str(self.__output_directory / "%(artist)s/%(album)s/%(artist)s - %(title)s.%(ext)s"),
-            confirm_large=True
+            confirm_large=True,
+            use_archive=True
         )
 
     def download_playlist(self):
-        """Download a playlist"""
-        return self._download_item(
-            item_type="playlist",
-            url_prompt="playlist URL",
-            output_template=str(self.__output_directory / "%(playlist)s/%(artist)s - %(title)s.%(ext)s"),
-            confirm_large=True,
-            additional_args=["--yes-playlist"]  # Ensure playlist is downloaded fully
-        )
+        """Download a playlist with concurrent downloads"""
+        Enhanced_Menu.clear_screen()
+        Enhanced_Menu.print_header("Download Playlist")
 
-    # Also update download_channel to use the unified retry logic
+        url = Enhanced_Menu.get_input("Enter YouTube Music playlist URL (or 'back' to return): ", "str")
+        if url.lower() == 'back':
+            return False
+        if not url or not Helpers.validate_youtube_url(url):
+            Enhanced_Menu.print_status("Invalid YouTube URL.", "error")
+            return False
+
+        # Validate resourceWNLOAD_TI
+        is_valid, message, metadata = Helpers.validate_resource_youtube(url)
+        if not is_valid:
+            Enhanced_Menu.print_status(f"Validation failed: {message}", "failure")
+            return False
+
+        playlist_count = metadata.get('playlist_count', 0) if metadata else 0
+        if playlist_count == 0:
+            Enhanced_Menu.print_status("No videos found in playlist.", "warning")
+            return False
+
+        playlist_title = metadata.get('title', 'Unknown Playlist')
+        Enhanced_Menu.print_status(f"Playlist: {playlist_title} ({playlist_count} videos)", "success")
+
+        if playlist_count > 50:
+            if not Enhanced_Menu.get_input(f"This playlist has {playlist_count} videos. Continue? (y/n)", "yn", default=False):
+                Enhanced_Menu.print_status("Download cancelled.", "info")
+                return False
+
+        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+            self.get_user_preferences()
+
+        # Fetch playlist items
+        items = Helpers.get_youtube_playlist_items(url, self.log_manager)
+        if not items:
+            Enhanced_Menu.print_status("Failed to retrieve playlist items.", "error")
+            return False
+
+        # Setup archive
+        playlist_id = Helpers.extract_youtube_playlist_id(url)
+        if playlist_id:
+            archive_path = self.archives_dir / f"{playlist_id}.txt"
+        else:
+            import hashlib
+            url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
+            archive_path = self.archives_dir / f"playlist_{url_hash}.txt"
+
+        # Prepare output folder
+        safe_title = Helpers.sanitize_filename(playlist_title)
+        playlist_folder = self.__output_directory / safe_title
+        playlist_folder.mkdir(parents=True, exist_ok=True)
+        output_template = str(playlist_folder / "%(artist)s - %(title)s.%(ext)s")
+
+        # Build tasks
+        tasks = []
+        for item in items:
+            video_id = item.get('id')
+            if not video_id:
+                continue
+            video_url = f"https://music.youtube.com/watch?v={video_id}"
+            additional_args = ["--download-archive", str(archive_path)]
+            tasks.append((video_url, output_template, additional_args, archive_path, video_id))
+
+        if not tasks:
+            Enhanced_Menu.print_status("No videos to download.", "warning")
+            return False
+
+        Enhanced_Menu.print_status(f"Starting concurrent download of {len(tasks)} videos (max 3 at a time)...", "info")
+        results = self._download_items_concurrently(tasks, max_workers=3, desc="Playlist Download")
+
+        success_count = sum(1 for v in results.values() if v)
+        failed_count = len(results) - success_count
+
+        print("\n" + "=" * 55)
+        Enhanced_Menu.print_header("Playlist Download Complete")
+        print(f"  {Fore.GREEN}Successfully downloaded: {success_count}{Style.RESET_ALL}")
+        if failed_count > 0:
+            print(f"  {Fore.RED}Failed: {failed_count}{Style.RESET_ALL}")
+        print("=" * 55)
+
+        return failed_count == 0
+
     def download_channel(self):
         """Download all videos from a YouTube channel"""
         print("\n" + "=" * 50)
@@ -713,169 +658,175 @@ class Youtube_Downloader:
         Enhanced_Menu.print_status("Warning: This may download many videos", "error")
         Enhanced_Menu.print_status("It could take a long time and use significant disk space", "error")
         print("=" * 50)
-        
+
         channel_url = Enhanced_Menu.get_input("Enter YouTube channel URL: ", "str")
         if not channel_url:
             print("No URL provided")
             return False
-        
-        if not self.validate_youtube_url(channel_url):
+
+        if not Helpers.validate_youtube_url(channel_url):
             Enhanced_Menu.print_status("Invalid YouTube URL. Please enter a valid YouTube channel URL", "error")
             return False
-        
-        # Check if it's a channel (not a video/playlist)
+
         if "/watch?" in channel_url or "/playlist?" in channel_url:
             Enhanced_Menu.print_status("This doesn't appear to be a channel URL", "error")
             return False
-        
+
         confirm = Enhanced_Menu.get_input("Are you sure you want to download ALL videos from this channel? (y/n)", "yn", default=False)
         if not confirm:
             Enhanced_Menu.print_status("Channel download cancelled", "info")
             return False
-        
+
         if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
             self.get_user_preferences()
-        
-        print(f"Starting Channel download. This may take a VERY long time...")
-        
+
+        print("Starting Channel download. This may take a VERY long time...")
+
         output_template = str(self.__output_directory / "%(channel)s/%(artist)s - %(title)s.%(ext)s")
         additional_args = [
             "--yes-playlist",
             "--download-archive", "downloaded_channels.txt"
         ]
-        
+
         return self._download_with_retry(channel_url, output_template, additional_args, "channel")
 
-    # Update download_from_file to use unified retry
     def download_from_file(self):
-        """Download various links from a file"""
+        """Batch download from a text file, with concurrent processing"""
         Enhanced_Menu.print_header("Batch Download", "Download from a text file containing links")
-        
+
         filepath = Enhanced_Menu.get_input("Enter the directory of the file: ", "str", default=self.__filepath)
         if not filepath:
             filepath = self.__filepath
-            
+
         if not os.path.exists(filepath):
             self.log_manager.log_failure(f"File not found: {filepath}")
             Enhanced_Menu.print_status(f"File not found: {filepath}", "error")
             return False
-        
+
         self.get_user_preferences()
-        
+
         try:
             with open(filepath, 'r', encoding='utf-8') as file:
                 file_lines = [line.rstrip() for line in file if line.strip()]
         except Exception as e:
             self.log_manager.log_failure(f"Error reading the file: {e}")
             return False
-        
+
         if not file_lines:
             self.log_manager.log_failure("No URLs found in the text file")
             return False
-        
+
         Enhanced_Menu.print_status(f"Found {len(file_lines)} URLs to process", "info")
-        
+
+        tasks = []
+        file_updates = {}
+        failed_validation = 0
+
+        for i, line in enumerate(file_lines):
+            clean_url = line.split('#')[0].strip()
+            if not clean_url:
+                continue
+            if "# DOWNLOADED" in line:
+                continue
+
+            # Validate (assuming YouTube; can be extended for Spotify later)
+            is_valid, message, metadata = Helpers.validate_resource_youtube(clean_url)
+            if not is_valid:
+                file_updates[i] = f"{clean_url} # VALIDATION_FAILED: {message}"
+                failed_validation += 1
+                continue
+
+            # Determine output template
+            if "playlist" in clean_url.lower() or "album" in clean_url.lower():
+                output_template = str(self.__output_directory / "%(playlist)s/%(artist)s - %(title)s.%(ext)s")
+            else:
+                output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
+
+            # Determine archive path
+            playlist_id = Helpers.extract_youtube_playlist_id(clean_url)
+            if playlist_id:
+                archive_path = self.archives_dir / f"{playlist_id}.txt"
+            else:
+                archive_path = self.archives_dir / "downloaded_videos.txt"
+
+            additional_args = ["--download-archive", str(archive_path)]
+            tasks.append((clean_url, output_template, additional_args, archive_path, i))
+
+        # Write validation failures back to file
+        for idx, new_line in file_updates.items():
+            file_lines[idx] = new_line
+        self._write_file_lines(filepath, file_lines)
+
+        if not tasks:
+            Enhanced_Menu.print_status("No valid URLs to download.", "warning")
+            return False
+
+        Enhanced_Menu.print_status(f"Starting concurrent download of {len(tasks)} items (max 3 at a time)...", "info")
+
+        results = self._download_items_concurrently(tasks, max_workers=3, desc="Batch Download")
+
         success_count = 0
         failed_count = 0
-        
-        # Create progress bar for batch download
-        with tqdm(total=len(file_lines), desc="Batch Progress", unit="items") as pbar:
-            for i, url in enumerate(file_lines, 1):
-                pbar.set_description(f"Processing {i}/{len(file_lines)}")
-                
-                clean_url = url.split('#')[0].strip()
-                
-                # Skip already downloaded items
-                if "# DOWNLOADED" in url:
-                    self.log_manager.log_success(f"Skipping already downloaded: {clean_url}")
-                    success_count += 1
-                    pbar.update(1)
-                    continue
-                
-                # Validate URL
-                print("\nValidating URL...")
-                is_valid, message, metadata = self.validate_resource(clean_url)
-                if not is_valid:
-                    self.log_manager.log_failure(f"URL validation failed: {clean_url} - {message}")
-                    file_lines[i - 1] = f"{clean_url} # VALIDATION_FAILED: {message}"
-                    failed_count += 1
-                    pbar.update(1)
-                    continue
-                
-                # Determine output template based on URL type
-                if "playlist" in clean_url.lower():
-                    output_template = str(self.__output_directory / "%(playlist)s/%(artist)s - %(title)s.%(ext)s")
-                elif "album" in clean_url.lower():
-                    output_template = str(self.__output_directory / "%(artist)s/%(album)s/%(artist)s - %(title)s.%(ext)s")
-                else:
-                    output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
-                
-                # Download with retry
-                success = self._download_with_retry(clean_url, output_template, None, "URL")
-                
-                if success:
-                    success_count += 1
-                    self.log_manager.log_success(f"Downloaded {clean_url}")
-                    file_lines[i - 1] = f"{clean_url} # DOWNLOADED"
-                else:
-                    failed_count += 1
-                    self.log_manager.log_failure(f"Failed to download {clean_url}")
-                    file_lines[i - 1] = f"{clean_url} # FAILED"
-                
-                pbar.update(1)
-        
-        # Update the file with status comments
-        try:
-            with open(filepath, 'w', encoding='utf-8') as file:
-                file.write("\n".join(file_lines))
-        except Exception as e:
-            self.log_manager.log_failure(f"Error updating the file: {e}")
-        
-        # Print summary
+        for task_id, success in results.items():
+            idx = task_id
+            url = next(t[0] for t in tasks if t[4] == idx)
+            if success:
+                file_lines[idx] = f"{url} # DOWNLOADED"
+                success_count += 1
+            else:
+                file_lines[idx] = f"{url} # FAILED"
+                failed_count += 1
+
+        total_failed = failed_count + failed_validation
+        self._write_file_lines(filepath, file_lines)
+
         print("\n" + "=" * 50)
         Enhanced_Menu.print_header("Download Summary:")
         Enhanced_Menu.print_status(f"Successfully downloaded: {success_count}", "success")
-        Enhanced_Menu.print_status(f"Failed: {failed_count}", "failure")
+        Enhanced_Menu.print_status(f"Failed (download): {failed_count}", "failure")
+        if failed_validation > 0:
+            Enhanced_Menu.print_status(f"Failed (validation): {failed_validation}", "failure")
         print("=" * 50)
-        
-        return failed_count == 0
-    
+
+        return total_failed == 0
+
+    def _write_file_lines(self, filepath, lines):
+        """Helper to write lines back to the file."""
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write("\n".join(lines))
+        except Exception as e:
+            self.log_manager.log_failure(f"Error updating file: {e}")
+
     def download_liked_songs(self):
         """Download all liked songs from YouTube Music"""
         print("\n" + "=" * 55)
         Enhanced_Menu.clear_screen()
         Enhanced_Menu.print_header("Download Liked Songs", "Download your entire YouTube Music liked songs library")
-        
-        # Warning about potential large download
+
         Enhanced_Menu.print_status("⚠️  This may download MANY songs depending on your library size", "warning")
         Enhanced_Menu.print_status("Make sure you have enough disk space and a stable connection", "warning")
         print()
-        
-        # Confirm with user
+
         confirm = Enhanced_Menu.get_input("Are you sure you want to download ALL your liked songs? (y/n)", "yn", default=False)
         if not confirm:
             Enhanced_Menu.print_status("Liked songs download cancelled", "info")
             return False
-        
-        # Get user preferences
+
         if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
             self.get_user_preferences()
-        
-        # Ask for limit (optional)
+
         limit_input = Enhanced_Menu.get_input("Enter maximum number of songs to download (or press Enter for all): ", "str", default="")
         max_songs = None
         if limit_input.strip() and limit_input.isdigit():
             max_songs = int(limit_input)
             Enhanced_Menu.print_status(f"Will download up to {max_songs} songs", "info")
-        
-        # Liked songs playlist URL
-        liked_songs_url = "https://music.youtube.com/playlist?list=LM"  # LM = Liked Music
-        
+
+        liked_songs_url = "https://music.youtube.com/playlist?list=LM"
+
         Enhanced_Menu.print_status("Fetching your liked songs... This may take a moment", "info")
-        
-        # First, get information about the liked songs playlist
+
         try:
-            # Get playlist info to count songs
             info_command = [
                 "yt-dlp",
                 "--flat-playlist",
@@ -883,7 +834,7 @@ class Youtube_Downloader:
                 "--no-warnings",
                 liked_songs_url
             ]
-            
+
             result = subprocess.run(
                 info_command,
                 stdout=subprocess.PIPE,
@@ -892,7 +843,7 @@ class Youtube_Downloader:
                 timeout=30,
                 check=False
             )
-            
+
             if result.returncode != 0:
                 error_msg = result.stderr.lower()
                 if "private" in error_msg or "login" in error_msg:
@@ -907,8 +858,7 @@ class Youtube_Downloader:
                 else:
                     Enhanced_Menu.print_status(f"Error fetching liked songs: {error_msg[:100]}", "error")
                     return False
-            
-            # Parse the JSON output to count songs
+
             songs = []
             for line in result.stdout.strip().split('\n'):
                 if line:
@@ -917,18 +867,17 @@ class Youtube_Downloader:
                         songs.append(song_info)
                     except json.JSONDecodeError:
                         continue
-            
+
             total_songs = len(songs)
             if max_songs:
                 total_songs = min(total_songs, max_songs)
-            
+
             Enhanced_Menu.print_status(f"Found {Fore.CYAN}{total_songs}{Style.RESET_ALL} liked songs", "success")
-            
+
             if total_songs == 0:
                 Enhanced_Menu.print_status("No liked songs found", "warning")
                 return False
-            
-            # Confirm download
+
             print()
             print(f"{Fore.YELLOW}Download Summary:{Style.RESET_ALL}")
             print(f"  • Songs to download: {Fore.CYAN}{total_songs}{Style.RESET_ALL}")
@@ -936,23 +885,17 @@ class Youtube_Downloader:
             print(f"  • Format: {Fore.CYAN}{self.__audio_format}{Style.RESET_ALL}")
             print(f"  • Quality: {Fore.CYAN}{self.__audio_quality}{Style.RESET_ALL}")
             print()
-            
+
             final_confirm = Enhanced_Menu.get_input("Proceed with download? (y/n)", "yn", default=True)
             if not final_confirm:
                 Enhanced_Menu.print_status("Download cancelled", "info")
                 return False
-            
-            # Setup output template for liked songs
+
             output_template = str(self.__output_directory / "Liked Songs" / "%(artist)s - %(title)s.%(ext)s")
-            
-            # Create the directory
             os.makedirs(os.path.dirname(output_template), exist_ok=True)
-            
-            # Create a progress file to track downloaded songs
+
             progress_file = self.__output_directory / "Liked Songs" / "download_progress.json"
             downloaded_songs = set()
-            
-            # Load previous progress if exists
             if progress_file.exists():
                 try:
                     with open(progress_file, 'r', encoding='utf-8') as f:
@@ -961,8 +904,7 @@ class Youtube_Downloader:
                         Enhanced_Menu.print_status(f"Resuming download - {len(downloaded_songs)} songs already downloaded", "info")
                 except:
                     pass
-            
-            # Filter out already downloaded songs
+
             if downloaded_songs:
                 songs_to_download = [s for s in songs if s.get('id') not in downloaded_songs]
                 if max_songs:
@@ -970,47 +912,41 @@ class Youtube_Downloader:
                 Enhanced_Menu.print_status(f"{len(songs_to_download)} new songs to download", "info")
             else:
                 songs_to_download = songs[:max_songs] if max_songs else songs
-            
+
             if not songs_to_download:
                 Enhanced_Menu.print_status("All liked songs are already downloaded!", "success")
                 return True
-            
-            # Start download with progress bar
+
             print()
             Enhanced_Menu.print_section("Downloading Liked Songs")
-            
+
             success_count = 0
             failed_count = 0
             skipped_count = 0
-            
-            # Create a tqdm progress bar for overall progress
-            with tqdm(total=len(songs_to_download), desc="Overall Progress", unit="songs", 
-                    bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} songs [{elapsed}<{remaining}]") as pbar:
-                
+
+            with tqdm(total=len(songs_to_download), desc="Overall Progress", unit="songs",
+                      bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} songs [{elapsed}<{remaining}]") as pbar:
+
                 for i, song in enumerate(songs_to_download, 1):
                     song_title = song.get('title', 'Unknown')
                     song_artist = song.get('uploader', song.get('artist', 'Unknown Artist'))
                     song_url = f"https://music.youtube.com/watch?v={song.get('id')}"
-                    
+
                     Enhanced_Menu.print_status(f"\n[{i}/{len(songs_to_download)}] Downloading: {song_artist} - {song_title}", "info")
-                    
-                    # Download the song with retries
+
                     download_success = False
                     for attempt in range(1, MAX_RETRIES + 1):
                         if attempt > 1:
                             print(f"  Retry {attempt}/{MAX_RETRIES}...")
                             time.sleep(RETRY_DELAY)
-                        
+
                         try:
                             result = self.run_download(song_url, output_template)
                             if result and result.returncode == 0:
                                 download_success = True
-                                
-                                # Mark as downloaded in progress file
                                 downloaded_songs.add(song.get('id'))
                                 with open(progress_file, 'w', encoding='utf-8') as f:
                                     json.dump({'downloaded': list(downloaded_songs)}, f, indent=2)
-                                
                                 success_count += 1
                                 break
                         except Exception as e:
@@ -1019,18 +955,14 @@ class Youtube_Downloader:
                                 failed_count += 1
                             else:
                                 continue
-                    
+
                     if not download_success:
-                        failed_count += 1 # Add to 
-                    
-                    # Update progress bar
+                        failed_count += 1
+
                     pbar.update(1)
                     pbar.set_postfix(success=success_count, failed=failed_count)
-                    
-                    # Small delay between downloads to avoid rate limiting
                     time.sleep(1)
-            
-            # Print summary
+
             print("\n" + "=" * 55)
             Enhanced_Menu.print_header("Download Complete")
             print(f"  {Fore.GREEN}Successfully downloaded: {success_count}{Style.RESET_ALL}")
@@ -1039,8 +971,7 @@ class Youtube_Downloader:
             if skipped_count > 0:
                 print(f"  {Fore.YELLOW}Skipped (already downloaded): {skipped_count}{Style.RESET_ALL}")
             print("=" * 55)
-            
-            # Offer to open the folder
+
             if success_count > 0:
                 open_folder = Enhanced_Menu.get_input("\nOpen download folder? (y/n)", "yn", default=False)
                 if open_folder:
@@ -1051,9 +982,9 @@ class Youtube_Downloader:
                         subprocess.run(['open', folder_path])
                     else:
                         subprocess.run(['xdg-open', folder_path])
-            
+
             return failed_count == 0
-            
+
         except subprocess.TimeoutExpired:
             Enhanced_Menu.print_status("Timeout while fetching liked songs", "error")
             return False
@@ -1061,7 +992,7 @@ class Youtube_Downloader:
             Enhanced_Menu.print_status(f"Error downloading liked songs: {str(e)[:100]}", "error")
             self.log_manager.log_error(f"Liked songs download error: {e}", exc_info=True)
             return False
-        
+
     @rate_limit(calls_per_minute=30)
     def search_a_song(self):
         """Search for a song and download it"""
@@ -1094,7 +1025,7 @@ class Youtube_Downloader:
                     return False
         return False
 
-    #  ============================================= Checkers & Yt-DLP Helpers =============================================
+    # ==================== Checkers & Helpers ====================
     def manage_cookies(self):
         """Calls the cookie management menu"""
         self.cookie_manager.interactive_menu()
@@ -1105,54 +1036,43 @@ class Youtube_Downloader:
             else:
                 self.use_cookies = False
             self.save_config()
-    
-    # Methods that now call the static methods from DownloaderUtils
+
     def check_ytdlp(self):
-        """Check if ytdlp is installed using utils"""
         return self.utils.check_ytdlp()
-    
+
     def check_ffmpeg(self):
-        """Check if ffmpeg is installed using utils"""
         return self.utils.check_ffmpeg()
-    
+
     def show_ytdlp_help(self):
-        """Display yt-dlp help using utils"""
         return self.utils.show_ytdlp_help()
-        
+
     def check_dependencies(self):
-        """Check for missing dependencies using utils"""
         return self.utils.check_dependencies()
-    
+
     def setup_dependencies(self):
-        """Setup dependencies using utils"""
         self.utils.setup_dependencies()
-    
+
     def program_info(self):
-        """Display program information using utils"""
         return self.utils.program_info()
-    
+
     def troubleshooting(self):
-        """Troubleshooting"""
         print("\n" + "=" * 50)
         Enhanced_Menu.print_header("TROUBLESHOOTING", "")
         print("=" * 50)
         print("Hello, this troubleshooter is to help if you're experiencing problem in the program")
         print("Running a simple diagnostic. This might take a while.....")
-        
-        # Step 1: Check if yt-dlp is installed
+
         Enhanced_Menu.print_status("1. Checking yt-dlp installation...", "info")
-        if not Youtube_Downloader.check_ytdlp():
+        if not self.check_ytdlp():
             Enhanced_Menu.print_status("yt-dlp not found or not working", "error")
             install = Enhanced_Menu.get_input("Install yt-dlp now? (y/n)", "yn", default=True)
             if install:
-                Youtube_Downloader.setup_dependencies()
-        
-        # Step 2: Check for ffmpeg on path      
+                self.setup_dependencies()
+
         Enhanced_Menu.print_status("\n2. Checking FFmpeg installation...", "info")
-        if not Youtube_Downloader.check_ffmpeg():
+        if not self.check_ffmpeg():
             Enhanced_Menu.print_status("FFmpeg not found (audio conversion might fail)", "error")
-        
-        # Check internet connection
+
         Enhanced_Menu.print_status("\n3. Testing YouTube access...", "info")
         test_url = "https://music.youtube.com/watch?v=215T8NF93kw"
         try:
@@ -1170,8 +1090,7 @@ class Youtube_Downloader:
                 Enhanced_Menu.print_status(f"Cannot access YouTube: {result.stderr[:100]}", "error")
         except Exception as e:
             Enhanced_Menu.print_status(f"Test failed: {e}", "error")
-        
-        # Check directories if they exist
+
         Enhanced_Menu.print_status("\n4. Checking directories...", "info")
         directories = ["Albums", "links"]
         for directory in directories:
@@ -1181,7 +1100,7 @@ class Youtube_Downloader:
                 Enhanced_Menu.print_status(f"{directory}/ missing", "warning")
         input("\nPress Enter to continue...")
         return True
-    
+
     def reset_to_defaults(self):
         """Reset all settings to default values"""
         self.__output_directory = Path("Albums")
@@ -1190,6 +1109,7 @@ class Youtube_Downloader:
         self.use_cookies = False
         self.save_config()
         Enhanced_Menu.print_status("Settings reset to defaults", "success")
+
 
 def main():
     """Main function to run the YouTube Downloader with integrated menus."""
