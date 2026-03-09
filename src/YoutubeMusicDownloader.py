@@ -1110,7 +1110,6 @@ class Youtube_Downloader:
         self.save_config()
         Enhanced_Menu.print_status("Settings reset to defaults", "success")
 
-
 def main():
     """Main function to run the YouTube Downloader with integrated menus."""
     Enhanced_Menu.clear_screen()
