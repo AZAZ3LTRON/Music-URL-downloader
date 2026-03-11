@@ -61,7 +61,6 @@ DOWNLOAD_TIMEOUT = 120
 COOKIE_DIRECTORY = r"cookies"
 os.makedirs(COOKIE_DIRECTORY, exist_ok=True)
 
-
 class Youtube_Downloader:
     """Downloader Class that handles the downloading process"""
     def __init__(self):
@@ -81,13 +80,13 @@ class Youtube_Downloader:
         self.log_manager = Logs_Manager()          # must be thread‑safe now
         self.utils = DownloaderUtils()
         self.use_cookies = False
-        self.__output_directory.mkdir(parents=True, exist_ok=True)
-
-        # FIX: use public attribute, not _archives_dir
+        self.__embed_metadata = False
+        
         self.archives_dir = Path("archives")
         self.archives_dir.mkdir(exist_ok=True)
-
+        self.__output_directory.mkdir(parents=True, exist_ok=True)
         Path("links").mkdir(parents=True, exist_ok=True)
+        
         try:
             self.load_config()
         except Exception as e:
@@ -122,12 +121,15 @@ class Youtube_Downloader:
                 self.__audio_format = config["audio_format"]
             if "use_cookies" in config:
                 self.use_cookies = config["use_cookies"]
+            if "embed_metadata" in config:
+                self.__embed_metadata = config["embed_metadata"]
         except Exception as e:
             self.log_manager.log_error(f"Error loading configuration: {e}")
             self.__output_directory = Path(primary_config["output_directory"])
             self.__audio_quality = primary_config["audio_quality"]
             self.__audio_format = primary_config["audio_format"]
             self.use_cookies = primary_config["use_cookies"]
+            self.__embed_metadata = primary_config["embed_metadata"]
 
     def save_config(self, config: Dict = None):
         """Save configuration to file"""
@@ -140,7 +142,8 @@ class Youtube_Downloader:
                     "max_retries": MAX_RETRIES,
                     "retry_delay": RETRY_DELAY,
                     "download_timeout": DOWNLOAD_TIMEOUT,
-                    "use_cookies": self.use_cookies
+                    "use_cookies": self.use_cookies,
+                    "embed_metadata": self.__embed_metadata
                 }
             with open(self.__configuration_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
@@ -218,6 +221,10 @@ class Youtube_Downloader:
             Enhanced_Menu.print_status("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Manager to help you", "info")
         else:
             self.use_cookies = False
+        
+        # Metadata embedding
+        metadata_choice = Enhanced_Menu.get_input("Embed metadata (artist, album, cover art) into files? (y/n):- ", "yn", default=self.__embed_metadata)
+        self.__embed_metadata = metadata_choice
 
     # ==================== Core download methods ====================
     @staticmethod
@@ -258,7 +265,6 @@ class Youtube_Downloader:
             "--audio-quality", self.__audio_quality,
             "-o", output_template,
             "--no-overwrites",
-            "--add-metadata",
             "--embed-thumbnail",
             "--newline",
             "--progress",
@@ -287,6 +293,9 @@ class Youtube_Downloader:
             else:
                 command.append(additional_args)
         command.append(url)
+        
+        if self.__embed_metadata:
+            command.extend(["--add-metadata"])
 
         try:
             progress_bar = tqdm(
@@ -578,7 +587,7 @@ class Youtube_Downloader:
             Enhanced_Menu.print_status("Invalid YouTube URL.", "error")
             return False
 
-        # Validate resourceWNLOAD_TI
+        # Validate resource
         is_valid, message, metadata = Helpers.validate_resource_youtube(url)
         if not is_valid:
             Enhanced_Menu.print_status(f"Validation failed: {message}", "failure")
@@ -1174,19 +1183,25 @@ def main():
             current_dir = str(downloader._Youtube_Downloader__output_directory)
             Enhanced_Menu.print_menu_item(3, "Output Directory", f"Current: {Fore.CYAN}{current_dir}{Style.RESET_ALL}")
             
-            Enhanced_Menu.print_section("🌐 NETWORK SETTINGS")
+            # New metadata option
+            metadata_status = "ENABLED" if downloader._Youtube_Downloader__embed_metadata else "DISABLED"
+            metadata_color = Fore.GREEN if downloader._Youtube_Downloader__embed_metadata else Fore.YELLOW
+            Enhanced_Menu.print_menu_item(4, "Metadata Embedding", f"Current: {metadata_color}{metadata_status}{Style.RESET_ALL}")
+            
+            Enhanced_Menu.print_section("🌐 COOKIE SETTINGS")
             cookie_status = "ENABLED" if downloader.use_cookies else "DISABLED"
             cookie_color = Fore.GREEN if downloader.use_cookies else Fore.YELLOW
-            Enhanced_Menu.print_menu_item(4, "Cookie Authentication", f"Current: {cookie_color}{cookie_status}{Style.RESET_ALL}")
+            Enhanced_Menu.print_menu_item(5, "Cookie Authentication", f"Current: {cookie_color}{cookie_status}{Style.RESET_ALL}")
             
             Enhanced_Menu.print_section("💾 Download Configuration")
-            Enhanced_Menu.print_menu_item(5, "Save Configuration")
-            Enhanced_Menu.print_menu_item(6, "Load Configuration")
-            Enhanced_Menu.print_menu_item(7, "Reset to Defaults")
+            Enhanced_Menu.print_menu_item(6, "Save Configuration")
+            Enhanced_Menu.print_menu_item(7, "Load Configuration")
+            Enhanced_Menu.print_menu_item(8, "Reset to Defaults")
             Enhanced_Menu.print_section("↩️  NAVIGATION")
-            Enhanced_Menu.print_menu_item(8, "Back to Main Menu")
+            Enhanced_Menu.print_menu_item(9, "Back to Main Menu")
             print()
-            choice = Enhanced_Menu.get_input("Select option", "int", 1, 8)
+            
+            choice = Enhanced_Menu.get_input("Select option", "int", 1, 9)
             if choice == 1:
                 Enhanced_Menu.clear_screen()
                 Enhanced_Menu.print_header("AUDIO FORMAT", "Select output format")
@@ -1252,6 +1267,31 @@ def main():
                         
             elif choice == 4:
                 Enhanced_Menu.clear_screen()
+                Enhanced_Menu.print_header("METADATA EMBEDDING",  "Control metadata in downloaded files")
+                print(f"{Fore.WHITE}Embedding metadata adds:{Style.RESET_ALL}")
+                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Artist and title tags")
+                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Album name")
+                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Track number")
+                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Cover art (thumbnail)")
+                print()
+                print(f"{Fore.YELLOW}Current status:{Style.RESET_ALL} ", end="")
+                if downloader._Youtube_Downloader__embed_metadata:
+                    print(f"{Fore.GREEN}ENABLED{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.YELLOW}DISABLED{Style.RESET_ALL}")
+                print()
+                new_setting = Enhanced_Menu.get_input(
+                    "Enable metadata embedding? (y/n)",
+                    "yn",
+                    default=downloader._Youtube_Downloader__embed_metadata
+                )
+                if new_setting is not None:
+                    downloader._Youtube_Downloader__embed_metadata = new_setting
+                    status = "enabled" if new_setting else "disabled"
+                    Enhanced_Menu.print_status(f"Metadata embedding {status}", "success")
+                
+            elif choice == 5:
+                Enhanced_Menu.clear_screen()
                 Enhanced_Menu.print_header("COOKIE SETTINGS", "Manage authentication")
                 print(f"{Fore.WHITE}Cookies help with:{Style.RESET_ALL}")
                 print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Age-restricted content")
@@ -1271,21 +1311,21 @@ def main():
                     status = "enabled" if new_setting else "disabled"
                     Enhanced_Menu.print_status(f"Cookies {status}", "success")
                     
-            elif choice == 5:
+            elif choice == 6:
                 try:
                     downloader.save_config()
                     Enhanced_Menu.print_status("Settings saved successfully", "success")
                 except Exception as e:
                     Enhanced_Menu.print_status(f"Error saving settings: {e}", "error")
                     
-            elif choice == 6:
+            elif choice == 7:
                 try:
                     downloader.load_config()
                     Enhanced_Menu.print_status("Settings loaded successfully", "success")
                 except Exception as e:
                     Enhanced_Menu.print_status(f"Error loading settings: {e}", "error")
                     
-            elif choice == 7:
+            elif choice == 8:
                 Enhanced_Menu.clear_screen()
                 Enhanced_Menu.print_header("RESET SETTINGS", "Restore defaults")
                 print(f"{Fore.YELLOW}⚠️  WARNING:{Style.RESET_ALL}")
@@ -1300,9 +1340,9 @@ def main():
                 confirm = Enhanced_Menu.get_input("Are you sure? (y/n)", "yn", default=False)
                 if confirm:
                     downloader.reset_to_defaults()
-            elif choice == 8:
+            elif choice == 9:
                 break
-            if choice != 8:
+            if choice != 9:
                 input(f"\n{Fore.CYAN}Press Enter to continue...{Style.RESET_ALL}")
 
     # Define actions as lambdas to ensure they're called only when selected
@@ -1354,11 +1394,14 @@ def main():
             Enhanced_Menu.print_menu_item(15, "Exit Program")
             print(f"\n{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
             Enhanced_Menu.print_status("Current Settings:", "info", "⚙️")
+            
             settings = [
                 ("Format", downloader._Youtube_Downloader__audio_format),
                 ("Quality", downloader._Youtube_Downloader__audio_quality),
                 ("Output", str(downloader._Youtube_Downloader__output_directory)),
+                ("Metadata", "Enabled" if downloader._Youtube_Downloader__embed_metadata else "Disabled"),  # new line
             ]
+            
             for setting_name, setting_value in settings:
                 print(f"  {Fore.CYAN}{setting_name}:{Style.RESET_ALL} {Fore.YELLOW}{setting_value}{Style.RESET_ALL}")
             cookie_status = "Enabled" if downloader.use_cookies else "Disabled"

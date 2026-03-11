@@ -22,10 +22,10 @@ class Logs_Manager:
         self.log_dir.mkdir(exist_ok=True)
         
         # Define log file paths
-        self.success_log_path = self.log_dir / "success.log"
-        self.failed_log_path = self.log_dir / "failed.log"
-        self.error_log_path = self.log_dir / "error.log"
-        self._lock = threading.Lock()
+        self.success_log_path = self.log_dir / "success.log" # Directory for successful downloads
+        self.failed_log_path = self.log_dir / "failed.log"  # Directory for failed downloads
+        self.error_log_path = self.log_dir / "error.log" # Directory for errors during downloads
+        self._lock = threading.Lock() # Locks the thread
         
         # Initialize loggers
         self.success_logger = None
@@ -36,6 +36,7 @@ class Logs_Manager:
         # Setup the logs
         self.setup_logs()
         
+        # Color map for respective logs
         self.color_map = {
             'success': Fore.GREEN,
             'failed': Fore.RED,
@@ -149,11 +150,13 @@ class Logs_Manager:
                                 ts_match = self._extract_timestamp(line)
                                 if ts_match:
                                     timestamps.append(ts_match)
-                            
+                                    
+                            # 
                             if timestamps:
                                 stats['oldest_entry'] = min(timestamps) if timestamps else None
                                 stats['newest_entry'] = max(timestamps) if timestamps else None
                 
+                # Raise error
                 except Exception as e:
                     self.log_error(f"Error reading log file {log_file}: {e}", console=False)
 
@@ -170,7 +173,7 @@ class Logs_Manager:
     
     def get_common_errors(self, limit: int = 7):
         """ Get the most common error message that occur in the program"""
-        error_patterns = {}
+        error_patterns = {} # Dictionary to store download patterns
         
         # Check if error logs exist
         if not self.error_log_path.exists():
@@ -222,21 +225,20 @@ class Logs_Manager:
         return activities[:limit]
     
     # =============== Display Methods ======================
-    
     def view_logs(self, log_type: str = None, title: str = None, color: str = None):
         """ Display records from log file with formatting"""
         
         # If log_type not provided, ask user
         if log_type is None:
             print(f"\n{Fore.CYAN}Log View Options:{Style.RESET_ALL}")
-            print(f"  {Fore.YELLOW}success{Style.RESET_ALL} - View successful downloads")
+            print(f"  {Fore.YELLOW}success{Style.RESET_ALL} - View successful downloads") # 
             print(f"  {Fore.YELLOW}failed{Style.RESET_ALL}  - View failed downloads")
             print(f"  {Fore.YELLOW}error{Style.RESET_ALL}   - View error logs")
             print(f"  {Fore.YELLOW}all{Style.RESET_ALL}      - View all logs combined")
             print()
             log_type = Enhanced_Menu.get_input("What logs would you like to view", "str").strip().lower()
         
-        # Dictionary stores tuples of
+        # Dictionary stores tuples of all log paths and their color codes
         log_files = {
             'success': (self.success_log_path, 'Successful downloads', self.color_map['success']),
             'failed': (self.failed_log_path, 'Failed downloads', self.color_map['failed']),
@@ -244,7 +246,7 @@ class Logs_Manager:
             'all': (None, 'All Logs', Fore.WHITE)
         }
         
-        # The user input must be in the dictionary
+        # The user input must be in the dictionary, else error
         if log_type not in log_files:
             Enhanced_Menu.print_status("Invalid log type. Enter a valid log type", "error")
             return
@@ -283,13 +285,14 @@ class Logs_Manager:
     
     def _display_all_logs(self):
         """ Display all logs in a combined view"""
-        stats = self.log_statistics()
+        stats = self.log_statistics() # Grab stats from log statistics function
         
         Enhanced_Menu.clear_screen()
         print(f"\n{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}{'COMBINED LOG VIEW':^80}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
         
+        # Loop through all paths to display
         for log_file, label, color in [(self.success_log_path, 'SUCCESS', Fore.GREEN),
                                        (self.failed_log_path, 'FAILED', Fore.RED),
                                        (self.error_log_path, 'ERROR', Fore.YELLOW)]:
@@ -307,7 +310,7 @@ class Logs_Manager:
                 except:
                     pass
         
-        input(f"\n{Fore.CYAN}Press Enter to continue...{Style.RESET_ALL}")
+        input(f"\n{Fore.CYAN}Press Enter to continue...{Style.RESET_ALL}") # Self explanatory
     
     def _display_paginated(self, lines: list, color: str, page_size: int = 20):
         """Display log lines with pagination capabilities"""
@@ -384,7 +387,6 @@ class Logs_Manager:
     def view_common_errors(self):
         """Display most common errors"""
         Enhanced_Menu.clear_screen()
-        print("\n" + "=" * 80)
         Enhanced_Menu.print_header("Most Common Errors")
         print("=" * 80)
         
@@ -402,7 +404,6 @@ class Logs_Manager:
     def view_recent_activity(self):
         """View recent download activity"""
         Enhanced_Menu.clear_screen()
-        print("\n" + "=" * 80)
         Enhanced_Menu.print_header("Recent Download Activity")
         print("=" * 80)
         
