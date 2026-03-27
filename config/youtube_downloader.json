@@ -1,9 +1,10 @@
 {
-  "output_directory": "Albums",
+  "output_directory": "Downloads",
   "audio_quality": "320k",
   "audio_format": "mp3",
   "max_retries": 3,
   "retry_delay": 10,
   "download_timeout": 120,
-  "use_cookies": true
+  "use_cookies": false,
+  "embed_metadata": false
 }
