@@ -1,179 +1,363 @@
-#!/usr/bin/env python3
 """
-YouTube Music Downloader GUI - PySide6 version
+YouTube Music Downloader GUI - Dark Grey & Red Theme with Enhanced Logs & Metadata
 Requires: pip install PySide6
 """
 
 import sys
 import os
+import webbrowser
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
+import urllib.request
+import tempfile
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QTabWidget, QGroupBox, QLabel, QLineEdit, QPushButton, QComboBox,
-    QCheckBox, QTextEdit, QProgressBar, QFileDialog, QMessageBox,
-    QRadioButton, QButtonGroup, QSpinBox
+    QStackedWidget, QPushButton, QLabel, QLineEdit,
+    QComboBox, QCheckBox, QTextEdit, QProgressBar,
+    QFileDialog, QMessageBox, QRadioButton, QButtonGroup, QGroupBox,
+    QTabWidget, QListWidget, QListWidgetItem
 )
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
-from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtCore import Qt, QThread, Signal, QSize
+from PySide6.QtGui import QFont, QTextCursor, QIcon, QPixmap, QPainter, QColor
 
-# Import your existing classes
-# Adjust the import paths according to your project structure
+# Add the src directory to Python's module search path
+src_path = Path(r"C:\Users\Ayomide Ajimuda\Documents\03 - Projects\Music-URL-downloader\src")
+
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+    
 from YoutubeMusicDownloader import Youtube_Downloader
 from Helpers_Validators import Helpers
 
 
+
+# ============================= Log Entry =============================
+class LogEntry:
+    def __init__(self, message: str, level: str):
+        self.message = message
+        self.level = level  # 'info', 'success', 'error', 'warning'
+
+    def to_html(self) -> str:
+        color_map = {
+            "info": "#cccccc",
+            "success": "#00ff00",
+            "error": "#ff5555",
+            "warning": "#ffff55"
+        }
+        color = color_map.get(self.level, "#ffffff")
+        return f'<span style="color:{color};">[{self.level.upper()}] {self.message}</span><br>'
+
+
+# ============================= Custom Image Button =============================
+class ImageButton(QPushButton):
+    def __init__(self, image_path, text="", parent=None):
+        super().__init__(parent)
+        self.text = text
+        self.icon = QIcon(image_path)
+        self.setIcon(self.icon)
+        self.setIconSize(QSize(40, 40))
+        self.setFixedSize(70, 70)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(text)
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: #3a3a3a;
+                border: 1px solid #660000;
+                border-radius: 8px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #4a0000;
+                border: 1px solid #cc0000;
+            }
+            QPushButton:pressed {
+                background-color: #5a0000;
+                border: 1px solid #ff3333;
+            }
+        """)
+
+
+# ============================= Sidebar Widget =============================
+class SidebarWidget(QWidget):
+    page_selected = Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(10, 20, 10, 20)
+        layout.setSpacing(15)
+
+        title_label = QLabel("NAVIGATION")
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("color: #cc0000; font-weight: bold; font-size: 14px; padding: 5px; border-bottom: 1px solid #cc0000;")
+        layout.addWidget(title_label)
+
+        button_data = [
+            ("download", "Download", 0),
+            ("settings", "Settings", 1),
+            ("logs", "Logs", 2),
+            ("tools", "Tools", 3),
+        ]
+        self.buttons = []
+        for internal_name, display_text, page_idx in button_data:
+            img_path = self.get_image_path(internal_name)
+            btn = ImageButton(img_path, display_text)
+            btn.clicked.connect(lambda checked, idx=page_idx: self.page_selected.emit(idx))
+            layout.addWidget(btn)
+            self.buttons.append(btn)
+
+        layout.addStretch()
+        self.setLayout(layout)
+        self.setStyleSheet("background-color: #2d2d2d;")  # dark grey sidebar
+
+    def get_image_path(self, image_type):
+        emoji_map = {"download": "⬇️", "settings": "⚙️", "logs": "📋", "tools": "🔧"}
+        emoji = emoji_map.get(image_type, "❓")
+        return self.create_emoji_image(emoji, image_type)
+
+    def create_emoji_image(self, emoji, name):
+        temp_dir = tempfile.gettempdir()
+        image_path = os.path.join(temp_dir, f"sidebar_{name}_darkred.png")
+        if not os.path.exists(image_path):
+            pixmap = QPixmap(100, 100)
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            painter.setPen(QColor(204, 0, 0))
+            painter.setFont(QFont("Arial", 50))
+            painter.drawText(pixmap.rect(), Qt.AlignCenter, emoji)
+            painter.end()
+            pixmap.save(image_path)
+        return image_path
+
+
 # ============================= Worker Thread =============================
 class DownloadWorker(QThread):
-    """Runs a download operation in a separate thread to keep GUI responsive."""
-    progress_update = Signal(str, int)      # (message, percentage) - percentage may be -1 for indeterminate
-    log_message = Signal(str, str)          # (message, level) where level: 'info', 'success', 'error', 'warning'
-    finished = Signal(bool)                 # True if successful, False otherwise
+    progress_update = Signal(str, int)
+    log_message = Signal(str, str)   # (message, level)
+    finished = Signal(bool)
 
-    def __init__(self, downloader: Youtube_Downloader, download_type: str, url: str = None, search_query: str = None):
+    def __init__(self, downloader: Youtube_Downloader, download_type: str, url: str = None, query: str = None):
         super().__init__()
         self.downloader = downloader
-        self.download_type = download_type   # 'track', 'album', 'playlist', 'search'
+        self.download_type = download_type
         self.url = url
-        self.search_query = search_query
+        self.query = query
 
     def run(self):
         try:
             success = False
-            if self.download_type == 'track':
-                # Override the download_track method to accept a URL parameter? Original uses input.
-                # We'll call a modified version or directly use _download_item.
-                # For simplicity, we can set a temporary attribute on downloader.
-                # Better: we can call a new method that accepts URL directly.
-                # I'll assume you add a method: download_track_url(url)
-                # If not, we can simulate by patching.
-                # Here I'll use the original method but we need to pass URL.
-                # Since the original expects interactive input, we'll create a wrapper.
-                success = self._download_single_item('track', self.url)
-            elif self.download_type == 'album':
-                success = self._download_single_item('album', self.url)
-            elif self.download_type == 'playlist':
-                success = self._download_single_item('playlist', self.url)
-            elif self.download_type == 'search':
-                # Search uses its own method
-                success = self.downloader.search_a_song()  # but search_a_song expects interactive input
-                # We need to modify to accept query. For now, assume we set self.downloader._search_query
-                # Better: add a method search_and_download(query)
-                pass
+            if self.download_type == "track":
+                success = self.downloader.download_track_url(self.url)
+            elif self.download_type == "album":
+                success = self.downloader.download_album_url(self.url)
+            elif self.download_type == "playlist":
+                success = self.downloader.download_playlist_url(self.url)
+            elif self.download_type == "search":
+                success = self.downloader.search_and_download(self.query)
             self.finished.emit(success)
         except Exception as e:
-            self.log_message.emit(str(e), 'error')
+            self.log_message.emit(str(e), "error")
             self.finished.emit(False)
 
-    def _download_single_item(self, item_type: str, url: str) -> bool:
-        """Wrapper to call the internal _download_item with URL."""
-        # The original _download_item loops for user input. We'll call a modified version.
-        # To avoid rewriting, we can temporarily replace the get_input method.
-        # But that's hacky. Instead, I'll assume you add a method like:
-        # downloader.download_url(item_type, url)
-        # For now, I'll implement a simplified version using the existing run_download.
-        # This is a placeholder – you should adapt to your actual API.
-        try:
-            if item_type == 'track':
-                output_template = str(self.downloader._Youtube_Downloader__output_directory / "%(artist)s - %(title)s.%(ext)s")
-            elif item_type == 'album':
-                output_template = str(self.downloader._Youtube_Downloader__output_directory / "%(artist)s/%(album)s/%(artist)s - %(title)s.%(ext)s")
-            elif item_type == 'playlist':
-                # For playlist, we need to handle multiple items. Use concurrent method.
-                return self._download_playlist(url)
-            else:
-                return False
 
-            # Use retry logic
-            return self.downloader._download_with_retry(url, output_template, None, item_type)
-        except Exception as e:
-            self.log_message.emit(str(e), 'error')
-            return False
-
-    def _download_playlist(self, url: str) -> bool:
-        """Simplified playlist download using existing method."""
-        # The existing download_playlist is interactive. We'll call it but need to pass URL.
-        # Again, best to refactor. I'll assume you have a method download_playlist_url(url)
-        # For demonstration, I'll call the original which expects input, so this won't work.
-        # Instead, I'll directly use the logic from download_playlist but with given URL.
-        # This is a placeholder – you need to adapt.
-        return self.downloader.download_playlist()  # won't work as is
-
-
-# ============================= Main GUI Window =============================
+# ============================= Main Window =============================
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.downloader = Youtube_Downloader()
         self.current_worker: Optional[DownloadWorker] = None
+        self.log_entries: List[LogEntry] = []   # store all logs
+        self.current_log_filter = "ALL"        # ALL, SUCCESS, FAILED, ERROR
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("YouTube Music Downloader")
-        self.setMinimumSize(800, 600)
+        self.setWindowTitle("YouTube Music Downloader - Dark Grey & Red")
+        self.setMinimumSize(950, 700)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        # Tab widget
-        self.tabs = QTabWidget()
-        main_layout.addWidget(self.tabs)
+        # Sidebar
+        self.sidebar = SidebarWidget()
+        self.sidebar.setFixedWidth(100)
+        self.sidebar.page_selected.connect(self.switch_page)
+        main_layout.addWidget(self.sidebar)
 
-        # Create tabs
-        self.download_tab = QWidget()
-        self.settings_tab = QWidget()
-        self.logs_tab = QWidget()
-        self.tools_tab = QWidget()
+        # Stacked content
+        self.stacked_widget = QStackedWidget()
+        main_layout.addWidget(self.stacked_widget, 1)
 
-        self.tabs.addTab(self.download_tab, "Download")
-        self.tabs.addTab(self.settings_tab, "Settings")
-        self.tabs.addTab(self.logs_tab, "Logs")
-        self.tabs.addTab(self.tools_tab, "Tools")
+        # Create pages
+        self.download_page = self.create_download_page()
+        self.settings_page = self.create_settings_page()
+        self.logs_page = self.create_logs_page()
+        self.tools_page = self.create_tools_page()
 
-        self.setup_download_tab()
-        self.setup_settings_tab()
-        self.setup_logs_tab()
-        self.setup_tools_tab()
+        self.stacked_widget.addWidget(self.download_page)
+        self.stacked_widget.addWidget(self.settings_page)
+        self.stacked_widget.addWidget(self.logs_page)
+        self.stacked_widget.addWidget(self.tools_page)
 
-        # Load current settings into UI
+        # Global stylesheet (dark grey & red)
+        self.setStyleSheet("""
+            QMainWindow, QWidget {
+                background-color: #2e2e2e;
+                color: #e0e0e0;
+            }
+            QGroupBox {
+                border: 1px solid #cc0000;
+                border-radius: 5px;
+                margin-top: 10px;
+                font-weight: bold;
+                color: #cc0000;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+            QLineEdit, QComboBox, QTextEdit {
+                background-color: #3a3a3a;
+                border: 1px solid #660000;
+                border-radius: 3px;
+                padding: 5px;
+                color: #ffffff;
+            }
+            QLineEdit:focus, QComboBox:focus, QTextEdit:focus {
+                border: 1px solid #cc0000;
+            }
+            QPushButton {
+                background-color: #3a3a3a;
+                border: 1px solid #cc0000;
+                border-radius: 5px;
+                padding: 8px;
+                color: #ffffff;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #cc0000;
+            }
+            QPushButton:pressed {
+                background-color: #990000;
+            }
+            QPushButton:disabled {
+                background-color: #4a4a4a;
+                border-color: #888888;
+                color: #aaaaaa;
+            }
+            QCheckBox, QRadioButton {
+                color: #e0e0e0;
+            }
+            QCheckBox::indicator, QRadioButton::indicator {
+                width: 13px;
+                height: 13px;
+                background-color: #3a3a3a;
+                border: 1px solid #cc0000;
+            }
+            QCheckBox::indicator:checked, QRadioButton::indicator:checked {
+                background-color: #cc0000;
+            }
+            QRadioButton::indicator {
+                border-radius: 7px;
+            }
+            QProgressBar {
+                border: 1px solid #cc0000;
+                border-radius: 3px;
+                text-align: center;
+                color: #ffffff;
+            }
+            QProgressBar::chunk {
+                background-color: #cc0000;
+            }
+            QListWidget {
+                background-color: #3a3a3a;
+                border: 1px solid #660000;
+                outline: none;
+            }
+            QListWidget::item {
+                padding: 5px;
+            }
+            QListWidget::item:selected {
+                background-color: #cc0000;
+                color: white;
+            }
+            QTabWidget::pane {
+                border: 1px solid #660000;
+                background-color: #2e2e2e;
+            }
+            QTabBar::tab {
+                background-color: #3a3a3a;
+                color: #e0e0e0;
+                padding: 5px 10px;
+            }
+            QTabBar::tab:selected {
+                background-color: #cc0000;
+            }
+        """)
+
         self.refresh_settings_display()
 
-    def setup_download_tab(self):
-        layout = QVBoxLayout(self.download_tab)
+    def switch_page(self, index: int):
+        self.stacked_widget.setCurrentIndex(index)
+
+    # ==================== Download Page ====================
+    def create_download_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
 
         # URL input
-        url_group = QGroupBox("Resource URL")
+        url_group = QGroupBox("RESOURCE URL")
         url_layout = QVBoxLayout()
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("Enter YouTube or YouTube Music URL...")
         url_layout.addWidget(self.url_input)
+
+        # Metadata fetch button
+        self.fetch_meta_btn = QPushButton("Get Metadata")
+        self.fetch_meta_btn.clicked.connect(self.fetch_metadata)
+        self.fetch_meta_btn.setFixedWidth(120)
+        url_layout.addWidget(self.fetch_meta_btn, alignment=Qt.AlignRight)
+
         url_group.setLayout(url_layout)
         layout.addWidget(url_group)
 
-        # Type selection
-        type_group = QGroupBox("Download Type")
+        # Metadata display panel
+        self.metadata_group = QGroupBox("METADATA")
+        metadata_layout = QVBoxLayout()
+        self.metadata_text = QTextEdit()
+        self.metadata_text.setReadOnly(True)
+        self.metadata_text.setMaximumHeight(150)
+        self.metadata_text.setPlaceholderText("Click 'Get Metadata' to see info about this resource...")
+        metadata_layout.addWidget(self.metadata_text)
+        self.metadata_group.setLayout(metadata_layout)
+        layout.addWidget(self.metadata_group)
+
+        # Download type
+        type_group = QGroupBox("DOWNLOAD TYPE")
         type_layout = QHBoxLayout()
         self.radio_track = QRadioButton("Track")
         self.radio_album = QRadioButton("Album")
         self.radio_playlist = QRadioButton("Playlist")
-        self.radio_search = QRadioButton("Search (keyword)")
+        self.radio_search = QRadioButton("Search")
         self.radio_track.setChecked(True)
         self.type_group = QButtonGroup()
-        self.type_group.addButton(self.radio_track)
-        self.type_group.addButton(self.radio_album)
-        self.type_group.addButton(self.radio_playlist)
-        self.type_group.addButton(self.radio_search)
-        type_layout.addWidget(self.radio_track)
-        type_layout.addWidget(self.radio_album)
-        type_layout.addWidget(self.radio_playlist)
-        type_layout.addWidget(self.radio_search)
+        for rb in (self.radio_track, self.radio_album, self.radio_playlist, self.radio_search):
+            self.type_group.addButton(rb)
+            type_layout.addWidget(rb)
         type_group.setLayout(type_layout)
         layout.addWidget(type_group)
 
-        # Search query (initially hidden)
-        self.search_group = QGroupBox("Search Query")
+        # Search query (hidden by default)
+        self.search_group = QGroupBox("SEARCH QUERY")
         search_layout = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Enter song name...")
@@ -181,8 +365,6 @@ class MainWindow(QMainWindow):
         self.search_group.setLayout(search_layout)
         self.search_group.setVisible(False)
         layout.addWidget(self.search_group)
-
-        # Connect radio buttons to toggle search visibility
         self.radio_search.toggled.connect(lambda checked: self.search_group.setVisible(checked))
 
         # Progress bar
@@ -195,106 +377,119 @@ class MainWindow(QMainWindow):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        # Download button
-        self.download_button = QPushButton("Start Download")
-        self.download_button.clicked.connect(self.start_download)
-        layout.addWidget(self.download_button)
+        # Buttons: Download and Open Folder
+        button_row = QHBoxLayout()
+        self.download_btn = QPushButton("START DOWNLOAD")
+        self.download_btn.clicked.connect(self.start_download)
+        button_row.addWidget(self.download_btn)
 
+        self.open_folder_btn = QPushButton("OPEN DOWNLOADS FOLDER")
+        self.open_folder_btn.clicked.connect(self.open_downloads_folder)
+        self.open_folder_btn.setEnabled(False)
+        button_row.addWidget(self.open_folder_btn)
+
+        layout.addLayout(button_row)
         layout.addStretch()
+        return page
 
-    def setup_settings_tab(self):
-        layout = QVBoxLayout(self.settings_tab)
+    def fetch_metadata(self):
+        """Validate the link and display metadata in the panel."""
+        url = self.url_input.text().strip()
+        if not url:
+            QMessageBox.warning(self, "No URL", "Please enter a URL first.")
+            return
+        if not Helpers.validate_youtube_url(url):
+            QMessageBox.warning(self, "Invalid URL", "Not a valid YouTube/YouTube Music URL.")
+            return
 
-        # Audio format
-        format_layout = QHBoxLayout()
-        format_layout.addWidget(QLabel("Audio Format:"))
+        self.status_label.setText("Fetching metadata...")
+        is_valid, message, metadata = Helpers.validate_resource_youtube(url)
+        if not is_valid:
+            self.metadata_text.setHtml(f'<span style="color:#ff5555;">Error: {message}</span>')
+            self.status_label.setText("Metadata fetch failed.")
+            return
+
+        # Build metadata display
+        if metadata:
+            info_text = f"""
+            <b>Title:</b> {metadata.get('title', 'Unknown')}<br>
+            <b>Type:</b> {metadata.get('type', 'Unknown')}<br>
+            <b>Duration:</b> {metadata.get('duration', 'Unknown')}<br>
+            <b>Uploader:</b> {metadata.get('uploader', 'Unknown')}<br>
+            <b>View count:</b> {metadata.get('view_count', 'Unknown')}<br>
+            """
+            if metadata.get('playlist_count'):
+                info_text += f"<b>Items in playlist/album:</b> {metadata['playlist_count']}<br>"
+            if metadata.get('description'):
+                desc = metadata['description'][:200] + "..." if len(metadata['description']) > 200 else metadata['description']
+                info_text += f"<b>Description:</b> {desc}<br>"
+            self.metadata_text.setHtml(info_text)
+            self.status_label.setText("Metadata loaded.")
+        else:
+            self.metadata_text.setText("No metadata available.")
+            self.status_label.setText("Metadata not found.")
+
+    def open_downloads_folder(self):
+        """Open the output directory in the system file explorer."""
+        output_dir = self.downloader._Youtube_Downloader__output_directory
+        if output_dir.exists():
+            webbrowser.open(str(output_dir))
+        else:
+            QMessageBox.warning(self, "Folder not found", f"The folder '{output_dir}' does not exist yet.")
+
+    # ==================== Settings Page ====================
+    def create_settings_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
+
+        row1 = QHBoxLayout()
+        row1.addWidget(QLabel("Audio Format:"))
         self.format_combo = QComboBox()
         self.format_combo.addItems(["mp3", "flac", "m4a", "opus", "ogg", "wav"])
-        format_layout.addWidget(self.format_combo)
-        layout.addLayout(format_layout)
+        row1.addWidget(self.format_combo)
+        layout.addLayout(row1)
 
-        # Audio quality
-        quality_layout = QHBoxLayout()
-        quality_layout.addWidget(QLabel("Audio Quality:"))
+        row2 = QHBoxLayout()
+        row2.addWidget(QLabel("Audio Quality:"))
         self.quality_combo = QComboBox()
-        qualities = ["320k", "256k", "192k", "128k", "auto", "disable"]
-        self.quality_combo.addItems(qualities)
-        quality_layout.addWidget(self.quality_combo)
-        layout.addLayout(quality_layout)
+        self.quality_combo.addItems(["320k", "256k", "192k", "128k", "auto", "disable"])
+        row2.addWidget(self.quality_combo)
+        layout.addLayout(row2)
 
-        # Output directory
-        output_layout = QHBoxLayout()
-        output_layout.addWidget(QLabel("Output Directory:"))
+        row3 = QHBoxLayout()
+        row3.addWidget(QLabel("Output Directory:"))
         self.output_dir_edit = QLineEdit()
         self.output_dir_edit.setReadOnly(True)
-        output_layout.addWidget(self.output_dir_edit)
-        self.browse_btn = QPushButton("Browse...")
-        self.browse_btn.clicked.connect(self.browse_output_dir)
-        output_layout.addWidget(self.browse_btn)
-        layout.addLayout(output_layout)
+        row3.addWidget(self.output_dir_edit)
+        browse_btn = QPushButton("Browse...")
+        browse_btn.clicked.connect(self.browse_output_dir)
+        row3.addWidget(browse_btn)
+        layout.addLayout(row3)
 
-        # Metadata embedding
         self.metadata_check = QCheckBox("Embed metadata (artist, album, cover art)")
         layout.addWidget(self.metadata_check)
 
-        # Cookies
         self.cookies_check = QCheckBox("Use cookies for authentication")
         layout.addWidget(self.cookies_check)
 
-        # Save/Load buttons
-        btn_layout = QHBoxLayout()
+        btn_row = QHBoxLayout()
         save_btn = QPushButton("Save Settings")
         save_btn.clicked.connect(self.save_settings)
         load_btn = QPushButton("Load Settings")
         load_btn.clicked.connect(self.load_settings)
         reset_btn = QPushButton("Reset to Defaults")
         reset_btn.clicked.connect(self.reset_settings)
-        btn_layout.addWidget(save_btn)
-        btn_layout.addWidget(load_btn)
-        btn_layout.addWidget(reset_btn)
-        layout.addLayout(btn_layout)
+        btn_row.addWidget(save_btn)
+        btn_row.addWidget(load_btn)
+        btn_row.addWidget(reset_btn)
+        layout.addLayout(btn_row)
 
         layout.addStretch()
+        return page
 
-    def setup_logs_tab(self):
-        layout = QVBoxLayout(self.logs_tab)
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setFont(QFont("Monospace", 9))
-        layout.addWidget(self.log_text)
-
-        clear_btn = QPushButton("Clear Logs")
-        clear_btn.clicked.connect(lambda: self.log_text.clear())
-        layout.addWidget(clear_btn)
-
-    def setup_tools_tab(self):
-        layout = QVBoxLayout(self.tools_tab)
-
-        # Dependencies
-        dep_btn = QPushButton("Check Dependencies")
-        dep_btn.clicked.connect(self.check_dependencies)
-        layout.addWidget(dep_btn)
-
-        # Cookie manager
-        cookie_btn = QPushButton("Manage Cookies")
-        cookie_btn.clicked.connect(self.manage_cookies)
-        layout.addWidget(cookie_btn)
-
-        # Troubleshooting
-        trouble_btn = QPushButton("Run Troubleshooter")
-        trouble_btn.clicked.connect(self.run_troubleshooter)
-        layout.addWidget(trouble_btn)
-
-        # Show yt-dlp help
-        help_btn = QPushButton("Show yt-dlp Help")
-        help_btn.clicked.connect(self.show_ytdlp_help)
-        layout.addWidget(help_btn)
-
-        layout.addStretch()
-
-    # ==================== Settings helpers ====================
     def refresh_settings_display(self):
-        """Load current downloader settings into UI."""
         self.format_combo.setCurrentText(self.downloader._Youtube_Downloader__audio_format)
         self.quality_combo.setCurrentText(self.downloader._Youtube_Downloader__audio_quality)
         self.output_dir_edit.setText(str(self.downloader._Youtube_Downloader__output_directory))
@@ -305,7 +500,6 @@ class MainWindow(QMainWindow):
         dir_path = QFileDialog.getExistingDirectory(self, "Select Output Directory")
         if dir_path:
             self.output_dir_edit.setText(dir_path)
-            self.downloader._Youtube_Downloader__output_directory = Path(dir_path)
 
     def save_settings(self):
         self.downloader._Youtube_Downloader__audio_format = self.format_combo.currentText()
@@ -326,34 +520,109 @@ class MainWindow(QMainWindow):
         self.refresh_settings_display()
         self.append_log("Settings reset to defaults.", "info")
 
-    # ==================== Logging ====================
-    def append_log(self, message: str, level: str = "info"):
-        """Add a message to the log tab with color coding."""
-        color_map = {
-            "info": "#cccccc",
-            "success": "#00ff00",
-            "error": "#ff5555",
-            "warning": "#ffff55"
-        }
-        color = color_map.get(level, "#ffffff")
-        formatted = f'<span style="color:{color};">[{level.upper()}] {message}</span><br>'
-        self.log_text.moveCursor(QTextCursor.MoveOperation.End)
-        self.log_text.insertHtml(formatted)
-        self.log_text.ensureCursorVisible()
+    # ==================== Logs Page with Filters ====================
+    def create_logs_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(30, 30, 30, 30)
 
-        # Also update status label for important messages
+        # Filter buttons
+        filter_layout = QHBoxLayout()
+        self.filter_all_btn = QPushButton("All")
+        self.filter_success_btn = QPushButton("Success")
+        self.filter_failed_btn = QPushButton("Failed")
+        self.filter_error_btn = QPushButton("Error")
+        for btn in (self.filter_all_btn, self.filter_success_btn, self.filter_failed_btn, self.filter_error_btn):
+            btn.setCheckable(True)
+            btn.setFixedWidth(80)
+            filter_layout.addWidget(btn)
+        filter_layout.addStretch()
+        self.filter_all_btn.setChecked(True)
+
+        self.filter_all_btn.clicked.connect(lambda: self.set_log_filter("ALL"))
+        self.filter_success_btn.clicked.connect(lambda: self.set_log_filter("SUCCESS"))
+        self.filter_failed_btn.clicked.connect(lambda: self.set_log_filter("FAILED"))
+        self.filter_error_btn.clicked.connect(lambda: self.set_log_filter("ERROR"))
+
+        layout.addLayout(filter_layout)
+
+        # Log display area
+        self.log_display = QTextEdit()
+        self.log_display.setReadOnly(True)
+        self.log_display.setFont(QFont("Monospace", 10))
+        layout.addWidget(self.log_display)
+
+        # Clear button
+        clear_btn = QPushButton("Clear Logs")
+        clear_btn.clicked.connect(self.clear_logs)
+        layout.addWidget(clear_btn)
+
+        return page
+
+    def set_log_filter(self, filter_type: str):
+        self.current_log_filter = filter_type
+        self.refresh_log_display()
+
+    def refresh_log_display(self):
+        self.log_display.clear()
+        for entry in self.log_entries:
+            level_upper = entry.level.upper()
+            if self.current_log_filter == "ALL":
+                self.log_display.insertHtml(entry.to_html())
+            elif self.current_log_filter == "SUCCESS" and level_upper == "SUCCESS":
+                self.log_display.insertHtml(entry.to_html())
+            elif self.current_log_filter == "FAILED" and level_upper == "FAILURE":
+                self.log_display.insertHtml(entry.to_html())
+            elif self.current_log_filter == "ERROR" and level_upper == "ERROR":
+                self.log_display.insertHtml(entry.to_html())
+        self.log_display.moveCursor(QTextCursor.MoveOperation.End)
+
+    def append_log(self, message: str, level: str):
+        entry = LogEntry(message, level)
+        self.log_entries.append(entry)
+        self.refresh_log_display()
+        # Also update status label for errors/success
         if level == "error":
             self.status_label.setText(f"Error: {message[:100]}")
         elif level == "success":
             self.status_label.setText(message[:100])
 
-    # ==================== Download handling ====================
+    def clear_logs(self):
+        self.log_entries.clear()
+        self.log_display.clear()
+
+    # ==================== Tools Page ====================
+    def create_tools_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
+
+        dep_btn = QPushButton("Check Dependencies")
+        dep_btn.clicked.connect(self.check_dependencies)
+        layout.addWidget(dep_btn)
+
+        cookie_btn = QPushButton("Manage Cookies")
+        cookie_btn.clicked.connect(self.manage_cookies)
+        layout.addWidget(cookie_btn)
+
+        trouble_btn = QPushButton("Run Troubleshooter")
+        trouble_btn.clicked.connect(self.run_troubleshooter)
+        layout.addWidget(trouble_btn)
+
+        help_btn = QPushButton("Show yt-dlp Help")
+        help_btn.clicked.connect(self.show_ytdlp_help)
+        layout.addWidget(help_btn)
+
+        layout.addStretch()
+        return page
+
+    # ==================== Download Logic ====================
     def start_download(self):
         if self.current_worker and self.current_worker.isRunning():
-            QMessageBox.warning(self, "Busy", "A download is already in progress. Please wait.")
+            QMessageBox.warning(self, "Busy", "A download is already in progress.")
             return
 
-        # Determine download type and parameters
         url = self.url_input.text().strip()
         if self.radio_search.isChecked():
             query = self.search_input.text().strip()
@@ -361,31 +630,26 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Missing Query", "Please enter a search query.")
                 return
             download_type = "search"
-            # For search, we'll need to call a modified method – placeholder
-            self.append_log("Search download not fully implemented in GUI yet.", "warning")
-            return
         else:
             if not url:
-                QMessageBox.warning(self, "Missing URL", "Please enter a valid YouTube URL.")
+                QMessageBox.warning(self, "Missing URL", "Please enter a URL.")
                 return
             if not Helpers.validate_youtube_url(url):
-                QMessageBox.warning(self, "Invalid URL", "The URL does not appear to be a valid YouTube/YouTube Music link.")
+                QMessageBox.warning(self, "Invalid URL", "Not a valid YouTube/YouTube Music URL.")
                 return
-            if self.radio_track.isChecked():
-                download_type = "track"
-            elif self.radio_album.isChecked():
-                download_type = "album"
-            else:
-                download_type = "playlist"
+            download_type = "track" if self.radio_track.isChecked() else "album" if self.radio_album.isChecked() else "playlist"
 
-        # Disable UI during download
-        self.download_button.setEnabled(False)
+        self.download_btn.setEnabled(False)
+        self.open_folder_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.status_label.setText("Starting download...")
 
-        # Create and start worker thread
-        self.current_worker = DownloadWorker(self.downloader, download_type, url)
+        self.current_worker = DownloadWorker(
+            self.downloader, download_type,
+            url=url if not self.radio_search.isChecked() else None,
+            query=self.search_input.text().strip() if self.radio_search.isChecked() else None
+        )
         self.current_worker.log_message.connect(self.append_log)
         self.current_worker.progress_update.connect(self.update_progress)
         self.current_worker.finished.connect(self.download_finished)
@@ -396,34 +660,25 @@ class MainWindow(QMainWindow):
         self.status_label.setText(message)
 
     def download_finished(self, success: bool):
-        self.download_button.setEnabled(True)
+        self.download_btn.setEnabled(True)
+        self.open_folder_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         if success:
             self.status_label.setText("Download completed successfully.")
             self.append_log("Download completed.", "success")
         else:
-            self.status_label.setText("Download failed. Check logs for details.")
-            self.append_log("Download failed.", "error")
+            self.status_label.setText("Download failed. Check logs.")
+            self.append_log("Download failed.", "failure")
         self.current_worker = None
 
-    # ==================== Tools ====================
+    # ==================== Tools Methods ====================
     def check_dependencies(self):
         self.append_log("Checking dependencies...", "info")
-        # Call downloader's dependency check
         result = self.downloader.check_dependencies()
         self.append_log(f"Dependency check result: {result}", "info")
 
     def manage_cookies(self):
-        # CookieManager has an interactive menu; we'll run it in a separate thread to avoid blocking GUI
-        # For simplicity, we'll show a message box and then open the cookie manager in console? Not ideal.
-        # Better to create a small dialog. I'll implement a basic version.
-        from CookieManager import CookieManager
-        cm = CookieManager()
-        # For now, just call the interactive menu in a separate thread (will open console)
-        # Alternatively, we can create a simple dialog to select cookie file.
-        # I'll leave as a placeholder.
-        QMessageBox.information(self, "Cookie Manager", "Please use the console-based cookie manager for now.\nRun your original script to manage cookies.")
-        # Actually, you can embed the cookie manager logic here if desired.
+        QMessageBox.information(self, "Cookie Manager", "Integrate your CookieManager class here.")
 
     def run_troubleshooter(self):
         self.append_log("Running troubleshooter...", "info")
@@ -432,9 +687,11 @@ class MainWindow(QMainWindow):
     def show_ytdlp_help(self):
         self.downloader.show_ytdlp_help()
 
+
 # ============================= Main =============================
 def main():
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
