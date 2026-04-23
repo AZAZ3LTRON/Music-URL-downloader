@@ -224,31 +224,6 @@ class Youtube_Downloader:
         self.__embed_metadata = metadata_choice
 
     # ==================== Core download methods ====================
-    @staticmethod
-    def rate_limit(calls_per_minute=60):
-        """Rate limit decorator to avoid blockage from (Improved)"""
-        def decorator(func):
-            last_called = [0.0]
-            call_lock = threading.Lock()
-            @wraps(func)
-            def wrapper(*args, **kwargs):
-                with call_lock:
-                    elapsed_time = time.time() - last_called[0]
-                    wait_time = (60.0 / calls_per_minute) - elapsed_time
-
-                    if wait_time > 0:
-                        time.sleep(wait_time)
-                    last_called[0] = time.time()
-
-                    try:
-                        return func(*args, **kwargs)
-                    except Exception as e:
-                        last_called[0] = time.time() - (60.0 / calls_per_minute)
-                        raise
-            return wrapper
-        return decorator
-    
-    @rate_limit(calls_per_minute=30)
     def run_download(self, url: str, output_template: str, additional_args=None):
         """Run yt-dlp download with modern syntax & tqdm progress bar"""
         # Ensure output directory exists
@@ -263,11 +238,17 @@ class Youtube_Downloader:
             "--audio-quality", self.__audio_quality,
             "-o", output_template,
             "--no-overwrites",
-            "--progress",
+            "--embed-thumbnail",
             "--newline",
+            "--progress",
+            "--console-title",
+            "--quiet",
+            "--no-warnings",
             "--ignore-errors",
             "--retries", "10",
             "--fragment-retries", "10",
+            "--buffer-size", "16K",
+            "--http-chunk-size", "10M",
             "--extractor-args", "youtube:player_client=android",
         ]
 
@@ -287,9 +268,7 @@ class Youtube_Downloader:
         command.append(url)
         
         if self.__embed_metadata:
-            command.extend(["--add-metadata", "-embed-thumbnail"])
-        else:
-            pass
+            command.extend(["--add-metadata"])
 
         try:
             progress_bar = tqdm(
@@ -406,6 +385,7 @@ class Youtube_Downloader:
                 progress_bar.close()
             raise
 
+    # -------------------- Retry wrapper --------------------
     def _download_with_retry(self, url: str, output_template: str, additional_args: list = None,
                              item_type: str = "item") -> bool:
         """Unified retry logic for downloads"""
@@ -441,6 +421,7 @@ class Youtube_Downloader:
                     self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
         return False
 
+    # -------------------- Concurrent helper --------------------
     def _download_items_concurrently(self, tasks, max_workers=3, desc="Downloading"):
         """
         tasks: list of (url, output_template, additional_args, archive_path, task_id)
@@ -478,6 +459,7 @@ class Youtube_Downloader:
 
         return results
 
+    # -------------------- Unified single‑item download (used by track/album) --------------------
     def _download_item(self, item_type: str, url_prompt: str, output_template: str,
                        additional_args: list = None, confirm_large: bool = False,
                        use_archive: bool = False) -> bool:
@@ -571,7 +553,7 @@ class Youtube_Downloader:
         Enhanced_Menu.clear_screen()
         Enhanced_Menu.print_header("Download Playlist")
 
-        url = Enhanced_Menu.get_input("Enter YouTube Music playlist URL (or 'back' to return)", "str")
+        url = Enhanced_Menu.get_input("Enter YouTube Music playlist URL (or 'back' to return): ", "str")
         if url.lower() == 'back':
             return False
         if not url or not Helpers.validate_youtube_url(url):
@@ -606,11 +588,6 @@ class Youtube_Downloader:
             Enhanced_Menu.print_status("Failed to retrieve playlist items.", "error")
             return False
 
-        # Reverse order to download from bottom to top
-        order = Enhanced_Menu.get_input("Download order: (t)op-to-bottom or (b)ottom-to-top", "str", default="t")
-        if order.lower() == 'b':
-            items.reverse()
-
         # Setup archive
         playlist_id = Helpers.extract_youtube_playlist_id(url)
         if playlist_id:
@@ -641,7 +618,7 @@ class Youtube_Downloader:
             return False
 
         Enhanced_Menu.print_status(f"Starting concurrent download of {len(tasks)} videos (max 3 at a time)...", "info")
-        results = self._download_items_concurrently(tasks, max_workers=self.parallel_downloads, desc="Playlist Download")
+        results = self._download_items_concurrently(tasks, max_workers=3, desc="Playlist Download")
 
         success_count = sum(1 for v in results.values() if v)
         failed_count = len(results) - success_count
