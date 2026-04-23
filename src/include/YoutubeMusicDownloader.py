@@ -35,6 +35,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlparse
 from typing import Dict
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import json
@@ -482,16 +483,35 @@ class Youtube_Downloader:
                 continue
 
             # Validate resource availability (using YouTube helper)
-            Enhanced_Menu.print_status("Validating resource...", "info")
             is_valid, message, metadata = Helpers.validate_resource_youtube(url)
-
+            
+            if not is_valid or not metadata:
+                Enhanced_Menu.print_status(f"Validation failed: {message}", "error")
+                continue
+            
+            Enhanced_Menu.print_status("Resource information:", "success")
+            if item_type == "track":
+                title = metadata.get('title', 'Unknown')
+                artist = metadata.get('artist') or metadata.get('uploader', 'Unknown Artist')
+                album = metadata.get('album', 'Unknown Album')
+                print(f"  {Fore.CYAN}Track:{Style.RESET_ALL} {title}")
+                print(f"  {Fore.CYAN}Artist:{Style.RESET_ALL} {artist}")
+                if album != 'Unknown Album':
+                    print(f"  {Fore.CYAN}Album:{Style.RESET_ALL} {album}")
+                
+            elif item_type == "album":
+                album_title = metadata.get('title', 'Unknown Album')
+                album_artist = metadata.get('artist') or metadata.get('uploader', 'Unknown Artist')
+                track_count = metadata.get('playlist_count', '?')   # ← use playlist_count
+                print(f"  {Fore.CYAN}Album:{Style.RESET_ALL} {album_title}")
+                print(f"  {Fore.CYAN}Artist:{Style.RESET_ALL} {album_artist}")
+                print(f"  {Fore.CYAN}Tracks:{Style.RESET_ALL} {track_count}")
+            print()  # blank line for readability                  
+            
             if is_valid and metadata:
                 if confirm_large and metadata.get('playlist_count', 0) > 50:
                     count = metadata['playlist_count']
-                    Enhanced_Menu.print_status(
-                        f"This {item_type} contains {count} items. This may take a while.",
-                        "warning"
-                    )
+                    Enhanced_Menu.print_status(f"This {item_type} contains {count} items. This may take a while.","warning")
                     if not Enhanced_Menu.get_input("Continue with download? (y/n)", "yn", default=False):
                         Enhanced_Menu.print_status("Download cancelled", "info")
                         continue
@@ -587,13 +607,17 @@ class Youtube_Downloader:
         if not items:
             Enhanced_Menu.print_status("Failed to retrieve playlist items.", "error")
             return False
+        
+        # Reverse order option
+        order = Enhanced_Menu.get_input("Download order: (t)op-to-bottom or (b)ottom-to-top", "str", default="t")
+        if order.lower() == 'b':
+            items.reverse()
 
         # Setup archive
         playlist_id = Helpers.extract_youtube_playlist_id(url)
         if playlist_id:
             archive_path = self.archives_dir / f"{playlist_id}.txt"
         else:
-            import hashlib
             url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
             archive_path = self.archives_dir / f"playlist_{url_hash}.txt"
 
