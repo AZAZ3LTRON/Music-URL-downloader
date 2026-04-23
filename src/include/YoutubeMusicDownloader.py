@@ -248,7 +248,7 @@ class Youtube_Downloader:
             return wrapper
         return decorator
     
-    @rate_limit(30)
+    @rate_limit(calls_per_minute=30)
     def run_download(self, url: str, output_template: str, additional_args=None):
         """Run yt-dlp download with modern syntax & tqdm progress bar"""
         # Ensure output directory exists
