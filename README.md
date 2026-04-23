@@ -9,7 +9,6 @@ However, there are certain requirements to use the downloader.
 
 As for the file structure, it goes like this:
 Music-URL-Downloader
-<<<<<<< HEAD
     │
     ├── assets                     # Image files for the GUI (in development)
     ├── config                     # Configuration used by the Downloaders (Subject to change)
@@ -30,30 +29,6 @@ Music-URL-Downloader
     └── requirements.txt           # Docker setup (optional)
 
 Unfortuntely, this program was developed on a Windows machine, however, I have pointed out areas subject to change for Linux & Mac Machines. Other than that, have a good one with the Program
-=======
-│
-├── assets                     # Image files for the GUI (in development)
-├── config                     # Configuration used by the Downloaders (Subject to change)
-├── gui                        # Contains test files for the GUI
-├── logs                       # Logs for the downloaders to keep track of success & failed downloads as well as errors
-├── src/
-|   ├── __pycache__
-│   ├── CookieManager.py             # Manages Cookie collection from browser
-│   ├── Downloader_Utils.py          # Handles all downloader utilities like checking for missing libraries
-│   ├── EnhancedMenu.py              # Creates beautiful menu interfaces
-│   ├── Logs_Handler.py              # Is responsible for logging successful, failed & errors in downloads
-|   ├── SpotifyDownloader.py         # Music Downloader that makes use of Spotdl
-|   ├── TestDownloader.py            # Always make sure to test before implementing changes permanently
-|   └──YoutubeMusicDownloader.py     # Music Downloader that makes use of Ytdlp
-|
-├── .gitignore                   # Git ignore file
-├── README.md                    # Project documentation
-└── requirements.txt           # Docker setup (optional)
-
- Unfortuntely, this program was developed on a Windows machine, however, I have pointed out areas subject to change for Linux & Mac Machines
-
- Have a good one with the Program
->>>>>>> 9c6f8d9992bcfe94147c809242bc5beff5e85d73
 
 # PLEASE READ:
 

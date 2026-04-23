@@ -263,7 +263,6 @@ class Youtube_Downloader:
             "--audio-quality", self.__audio_quality,
             "-o", output_template,
             "--no-overwrites",
-            "--embed-thumbnail",
             "--progress",
             "--newline",
             "--ignore-errors",
@@ -290,7 +289,7 @@ class Youtube_Downloader:
         if self.__embed_metadata:
             command.extend(["--add-metadata", "-embed-thumbnail"])
         else:
-            command.append("--embed-thumbnail")
+            pass
 
         try:
             progress_bar = tqdm(
@@ -606,6 +605,11 @@ class Youtube_Downloader:
         if not items:
             Enhanced_Menu.print_status("Failed to retrieve playlist items.", "error")
             return False
+
+        # Reverse order to download from bottom to top
+        order = Enhanced_Menu.get_input("Download order: (t)op-to-bottom or (b)ottom-to-top", "str", default="t")
+        if order.lower() == 'b':
+            items.reverse()
 
         # Setup archive
         playlist_id = Helpers.extract_youtube_playlist_id(url)
