@@ -120,7 +120,8 @@ class CookieManager:
                 return ctypes.windll.shell32.IsUserAnAdmin() != 0
             except Exception:
                 return False
-        return True            
+        return True
+                
     def get_status(self):
         """Check available browser cookies and report status."""
         Enhanced_Menu.print_header("Checking available browser cookies....")
@@ -382,7 +383,7 @@ class CookieManager:
         except Exception as e:
             Enhanced_Menu.print_status(f"Error clearing cookies: {e}", "error")
 
-    def test_cookies(self, url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"):
+    def test_cookies(self, url="https://music.youtube.com/watch?v=215T8NF93kw"):
         """Test if cookies work by trying to access a URL."""
         if not self.current_cookie_file:
             Enhanced_Menu.print_status("No active cookie file to test", "error")

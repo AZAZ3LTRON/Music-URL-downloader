@@ -16,8 +16,6 @@ Its features include:
 - Log failed downloads
 - Log errors in between downloads
 - Retry downloads
-
-Now Improved with
 - Progress bar for downloads
 - Batch Processing (with parallel downloads)
 - Resource Validation (Check if links are available)
@@ -71,18 +69,17 @@ class Youtube_Downloader:
         self.__output_directory = Path("Albums")
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
-        self.__filepath = r"links/youtube_links.txt"
         self.__configuration_file = r"config/youtube_downloader.json"
         self.cookie_manager = CookieManager()
         self.log_manager = Logs_Manager()          # must be thread‑safe now
         self.utils = DownloaderUtils()
         self.use_cookies = False
         self.__embed_metadata = False
+        self.parallel_downloads = 5
         
         self.archives_dir = Path("archives")
         self.archives_dir.mkdir(exist_ok=True)
         self.__output_directory.mkdir(parents=True, exist_ok=True)
-        Path("links").mkdir(parents=True, exist_ok=True)
         
         try:
             self.load_config()
@@ -99,6 +96,7 @@ class Youtube_Downloader:
             "max_retries": MAX_RETRIES,
             "retry_delay": RETRY_DELAY,
             "download_timeout": DOWNLOAD_TIMEOUT,
+            "parallel_downloads": 5,
             "use_cookies": False
         }
         try:
@@ -120,6 +118,8 @@ class Youtube_Downloader:
                 self.use_cookies = config["use_cookies"]
             if "embed_metadata" in config:
                 self.__embed_metadata = config["embed_metadata"]
+            if "parallel_downloads" in config:
+                self.parallel_downloads = config["parallel_downloads"]
         except Exception as e:
             self.log_manager.log_error(f"Error loading configuration: {e}")
             self.__output_directory = Path(primary_config["output_directory"])
@@ -248,6 +248,7 @@ class Youtube_Downloader:
             return wrapper
         return decorator
     
+    @rate_limit(30)
     def run_download(self, url: str, output_template: str, additional_args=None):
         """Run yt-dlp download with modern syntax & tqdm progress bar"""
         # Ensure output directory exists
@@ -263,16 +264,11 @@ class Youtube_Downloader:
             "-o", output_template,
             "--no-overwrites",
             "--embed-thumbnail",
-            "--newline",
             "--progress",
-            "--console-title",
-            "--quiet",
-            "--no-warnings",
+            "--newline",
             "--ignore-errors",
             "--retries", "10",
             "--fragment-retries", "10",
-            "--buffer-size", "16K",
-            "--http-chunk-size", "10M",
             "--extractor-args", "youtube:player_client=android",
         ]
 
@@ -292,7 +288,9 @@ class Youtube_Downloader:
         command.append(url)
         
         if self.__embed_metadata:
-            command.extend(["--add-metadata"])
+            command.extend(["--add-metadata", "-embed-thumbnail"])
+        else:
+            command.append("--embed-thumbnail")
 
         try:
             progress_bar = tqdm(
@@ -409,7 +407,6 @@ class Youtube_Downloader:
                 progress_bar.close()
             raise
 
-    # -------------------- Retry wrapper --------------------
     def _download_with_retry(self, url: str, output_template: str, additional_args: list = None,
                              item_type: str = "item") -> bool:
         """Unified retry logic for downloads"""
@@ -445,7 +442,6 @@ class Youtube_Downloader:
                     self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
         return False
 
-    # -------------------- Concurrent helper --------------------
     def _download_items_concurrently(self, tasks, max_workers=3, desc="Downloading"):
         """
         tasks: list of (url, output_template, additional_args, archive_path, task_id)
@@ -483,7 +479,6 @@ class Youtube_Downloader:
 
         return results
 
-    # -------------------- Unified single‑item download (used by track/album) --------------------
     def _download_item(self, item_type: str, url_prompt: str, output_template: str,
                        additional_args: list = None, confirm_large: bool = False,
                        use_archive: bool = False) -> bool:
@@ -642,7 +637,7 @@ class Youtube_Downloader:
             return False
 
         Enhanced_Menu.print_status(f"Starting concurrent download of {len(tasks)} videos (max 3 at a time)...", "info")
-        results = self._download_items_concurrently(tasks, max_workers=3, desc="Playlist Download")
+        results = self._download_items_concurrently(tasks, max_workers=self.parallel_downloads, desc="Playlist Download")
 
         success_count = sum(1 for v in results.values() if v)
         failed_count = len(results) - success_count
@@ -656,8 +651,7 @@ class Youtube_Downloader:
 
         return failed_count == 0
 
-    @rate_limit(calls_per_minute=30)
-    def search_a_song(self):
+    def search_and_download(self):
         """Search for a song and download it"""
         Enhanced_Menu.print_header("SEARCH & DOWNLOAD")
         song_query = Enhanced_Menu.get_input("What is the name of the song you're looking for: ").strip()
@@ -755,7 +749,7 @@ class Youtube_Downloader:
             Enhanced_Menu.print_status(f"Test failed: {e}", "error")
 
         Enhanced_Menu.print_status("\n4. Checking directories...", "info")
-        directories = ["Albums", "links"]
+        directories = ["Albums"]
         for directory in directories:
             if os.path.exists(directory):
                 Enhanced_Menu.print_status(f"{directory}/ exists", "success")
@@ -787,7 +781,7 @@ def main():
     print(f"{Fore.YELLOW}{Style.BRIGHT}YouTube Music Downloader{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}Initializing...{Style.RESET_ALL}")
 
-    directories = ["Albums", "links", "cookies"]
+    directories = ["Albums", "cookies"]
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
         print(f"{Fore.GREEN}✓{Style.RESET_ALL} Directory '{directory}/' ready")
@@ -1004,7 +998,7 @@ def main():
         1: lambda: downloader.download_track(),
         2: lambda: downloader.download_album(),
         3: lambda: downloader.download_playlist(),
-        4: lambda: downloader.search_a_song(),
+        4: lambda: downloader.search_and_download(),
         5: lambda: downloader.manage_cookies(),
         6: lambda: downloader.check_dependencies(),
         7: lambda: handle_settings(),
