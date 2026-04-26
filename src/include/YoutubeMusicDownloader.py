@@ -26,19 +26,20 @@ Additionally make sure ffmpeg is installed, as that is necessary to parse the mu
 Enjoy!
 """
 
+import re
 import sys
 import os
 import subprocess
 import time
-from functools import wraps
-from pathlib import Path
-import re
-from urllib.parse import urlparse
-from typing import Dict
 import hashlib
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import json
+
+from functools import wraps
+from pathlib import Path
+from urllib.parse import urlparse
+from typing import Dict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from colorama import init, Fore, Style
 
