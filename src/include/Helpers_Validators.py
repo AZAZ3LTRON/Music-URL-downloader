@@ -27,35 +27,6 @@ class Helpers:
         return False
 
     @staticmethod
-    def validate_spotify_url(url: str) -> Tuple[bool, Optional[str]]:
-        patterns = [
-            (r'^https://open\.spotify\.com/track/[A-Za-z0-9]+', 'track'),
-            (r'^https://open\.spotify\.com/album/[A-Za-z0-9]+', 'album'),
-            (r'^https://open\.spotify\.com/playlist/[A-Za-z0-9]+', 'playlist'),
-            (r'^https://open\.spotify\.com/artist/[A-Za-z0-9]+', 'artist'),
-            (r'^spotify:track:[A-Za-z0-9]+$', 'track'),
-            (r'^spotify:album:[A-Za-z0-9]+$', 'album'),
-            (r'^spotify:playlist:[A-Za-z0-9]+$', 'playlist'),
-            (r'^spotify:artist:[A-Za-z0-9]+$', 'artist')
-        ]
-        for pattern, typ in patterns:
-            if re.match(pattern, url, re.IGNORECASE):
-                return True, typ
-        return False, None
-
-    @staticmethod
-    def extract_spotify_id(url: str) -> str:
-        patterns = [
-            r'spotify\.com/(track|album|playlist)/([A-Za-z0-9]+)',
-            r'spotify:(track|album|playlist):([A-Za-z0-9]+)'
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(2)
-        return None
-
-    @staticmethod
     def extract_youtube_id(url: str) -> str:
         patterns = [
             r'(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]+)',
@@ -153,51 +124,6 @@ class Helpers:
                     return False, f"Validation failed: {err[:100]}", None
         except subprocess.TimeoutExpired:
             return False, "Validation timeout", None
-        except Exception as e:
-            return False, f"Validation error: {str(e)[:100]}", None
-
-    @staticmethod
-    def validate_resource_spotify(url: str, timeout=30) -> Tuple[bool, str, Optional[dict]]:
-        """Validate Spotify URL using spotdl."""
-        cmd = ["spotdl", url, "--skip-download", "--print-json", "--no-warnings"]
-        try:
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                    text=True, timeout=timeout, check=False)
-            if result.returncode == 0 and result.stdout.strip():
-                try:
-                    metadata = json.loads(result.stdout.strip())
-                    if not metadata.get("name") and not metadata.get("title"):
-                        return False, "Missing title metadata", metadata
-                    typ = metadata.get("type", "")
-                    if typ in ("playlist", "album"):
-                        tracks = metadata.get("tracks", [])
-                        available = sum(1 for t in tracks if t.get("available", True))
-                        total = len(tracks)
-                        if available == 0:
-                            return False, f"No available tracks in this {typ}", metadata
-                        return True, f"{typ} available ({available}/{total} tracks)", metadata
-                    else:  # track
-                        if metadata.get("duration", 0) <= 0:
-                            return False, "Invalid duration", metadata
-                        return True, "Track available", metadata
-                except json.JSONDecodeError:
-                    return False, "Invalid JSON response", None
-            else:
-                err = result.stderr.lower()
-                if "not found" in err:
-                    return False, "Resource not found on Spotify", None
-                elif "private" in err or "access" in err:
-                    return False, "Private resource – requires authentication", None
-                elif "unavailable" in err:
-                    return False, "Resource unavailable in your region", None
-                elif "quota" in err or "rate limit" in err:
-                    return False, "Rate limit exceeded, try later", None
-                else:
-                    return False, f"{err[:100]}", None
-        except subprocess.TimeoutExpired:
-            return False, "Validation timeout", None
-        except FileNotFoundError:
-            return False, "spotdl not found – please install it first", None
         except Exception as e:
             return False, f"Validation error: {str(e)[:100]}", None
 
