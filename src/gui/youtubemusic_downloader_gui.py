@@ -22,7 +22,7 @@ from PySide6.QtCore import Qt, QThread, Signal, QSize
 from PySide6.QtGui import QFont, QTextCursor, QIcon, QPixmap, QPainter, QColor
 
 # Add the include directory
-include_path = Path(r"C:\Users\Ayomide Ajimuda\Documents\03 - Projects\Music-URL-downloader\src\include")
+include_path = Path(r"C:\Users\Ayomide Ajimuda\Documents\03 - Projects\Music-URL-downloader\src\include") # Subject to change
 if str(include_path) not in sys.path:
     sys.path.insert(0, str(include_path))
 
@@ -72,7 +72,6 @@ class ImageButton(QPushButton):
                 border: 1px solid #ff3333;
             }
         """)
-
 
 # ============================= Sidebar Widget =============================
 class SidebarWidget(QWidget):
@@ -129,7 +128,6 @@ class SidebarWidget(QWidget):
             pixmap.save(image_path)
         return image_path
 
-
 # ============================= Worker Thread =============================
 class DownloadWorker(QThread):
     progress_update = Signal(str, int)
@@ -158,7 +156,6 @@ class DownloadWorker(QThread):
         except Exception as e:
             self.log_message.emit(str(e), "error")
             self.finished.emit(False)
-
 
 # ============================= Main Window =============================
 class MainWindow(QMainWindow):
@@ -682,7 +679,6 @@ class MainWindow(QMainWindow):
 
     def show_ytdlp_help(self):
         self.downloader.show_ytdlp_help()
-
 
 # ============================= Main =============================
 def main():
