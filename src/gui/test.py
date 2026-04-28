@@ -86,6 +86,14 @@ class SidebarWidget(QWidget):
         layout.setContentsMargins(10, 20, 10, 20)
         layout.setSpacing(15)
 
+        # Title image (adjust path as needed)
+        title_label = QLabel()
+        pixmap = QPixmap("assets/download.png")  # or use ASSETS_DIR / "download.png"
+        if not pixmap.isNull():
+            title_label.setPixmap(pixmap.scaled(150, 50, Qt.KeepAspectRatio))
+        title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title_label)
+
         # Button data: (image_path, tooltip_text, page_index)
         button_data = [
             ("assets/download_icon.png", "Download", 0),
@@ -100,7 +108,7 @@ class SidebarWidget(QWidget):
             layout.addWidget(btn)
 
         layout.addStretch()
-        self.setStyleSheet("background-color: #000000;")  # Sable Black
+        self.setStyleSheet("background-color: #060606")  # Sable Black
 
 # ============================= Worker Thread =============================
 class DownloadWorker(QThread):

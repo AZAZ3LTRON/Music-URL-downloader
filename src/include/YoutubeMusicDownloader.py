@@ -657,6 +657,9 @@ class Youtube_Downloader:
 
         return failed_count == 0
 
+    def download_channel(self):
+        pass
+
     def search_and_download(self):
         """Search for a song and download it"""
         Enhanced_Menu.print_header("SEARCH & DOWNLOAD")
