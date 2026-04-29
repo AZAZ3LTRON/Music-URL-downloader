@@ -77,7 +77,6 @@ class Youtube_Downloader:
         self.utils = DownloaderUtils()
         self.use_cookies = False
         self.__embed_metadata = False
-        self.parallel_downloads = 5
         
         self.archives_dir = Path("archives")
         self.archives_dir.mkdir(exist_ok=True)
@@ -87,7 +86,7 @@ class Youtube_Downloader:
             self.load_config()
         except Exception as e:
             self.log_manager.log_error(f"Error loading config: {e}")
-
+    
     # ==================== Configuration Managers ====================
     def load_config(self):
         """Load configuration from json file"""
@@ -98,7 +97,6 @@ class Youtube_Downloader:
             "max_retries": MAX_RETRIES,
             "retry_delay": RETRY_DELAY,
             "download_timeout": DOWNLOAD_TIMEOUT,
-            "parallel_downloads": 5,
             "use_cookies": False
         }
         try:
@@ -120,8 +118,7 @@ class Youtube_Downloader:
                 self.use_cookies = config["use_cookies"]
             if "embed_metadata" in config:
                 self.__embed_metadata = config["embed_metadata"]
-            if "parallel_downloads" in config:
-                self.parallel_downloads = config["parallel_downloads"]
+                
         except Exception as e:
             self.log_manager.log_error(f"Error loading configuration: {e}")
             self.__output_directory = Path(primary_config["output_directory"])
