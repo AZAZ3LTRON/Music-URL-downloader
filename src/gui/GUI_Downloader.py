@@ -121,62 +121,43 @@ class DownloadWorker(QThread):
     progress_update = Signal(str, int)
     log_message = Signal(str, str)
     finished = Signal(bool)
-    
-    def __init__(self, downloader: Youtube_Downloader, download_type: str,
-                 url: str = None, query: str = None):
+
+    def __init__(self, downloader, download_type, url=None, query=None):
         super().__init__()
-        self.adapter = DownloaderInterface(downloader)   # wrap once
+        self.adapter = DownloaderInterface(downloader)
         self.download_type = download_type
         self.url = url
         self.query = query
-        self._is_cancelled = False
+        self.cancel_event = threading.Event()
 
     def progress_callback(self, percent: int, msg: str):
         self.progress_update.emit(msg, percent)
 
-    def cancel_check(self) -> bool:
-        return self._is_cancelled
+    def cancel(self):
+        self.cancel_event.set()
+        self.log_message.emit("Cancelling download...", "warning")
 
     def run(self):
         try:
-            if self._is_cancelled:
-                self.finished.emit(False)
-                return
-
-            self.progress_update.emit("Starting download...", 0)
-            success = False
-
             if self.download_type == "track":
-                success = self.adapter.download_track(
-                    self.url, self.progress_callback, self.cancel_check)
+                ok = self.adapter.download_track(
+                    self.url, self.progress_callback, self.cancel_event)
             elif self.download_type == "album":
-                success = self.adapter.download_album(
-                    self.url, self.progress_callback, self.cancel_check)
+                ok = self.adapter.download_album(
+                    self.url, self.progress_callback, self.cancel_event)
             elif self.download_type == "playlist":
-                success = self.adapter.download_playlist(
-                    self.url, self.progress_callback, self.cancel_check)
+                ok = self.adapter.download_playlist(
+                    self.url, self.progress_callback, self.cancel_event)
             elif self.download_type == "search":
-                success = self.adapter.search_and_download(
-                    self.query, self.progress_callback, self.cancel_check)
-
-            if not self._is_cancelled:
-                if success:
-                    self.progress_update.emit("Download completed!", 100)
-                    self.log_message.emit("Download completed successfully", "success")
-                else:
-                    self.log_message.emit("Download failed", "error")
-                self.finished.emit(success)
+                ok = self.adapter.search_and_download(
+                    self.query, self.progress_callback, self.cancel_event)
             else:
-                self.finished.emit(False)
-
+                raise ValueError("Unknown download type")
+            self.finished.emit(ok)
         except Exception as e:
-            self.log_message.emit(f"Error: {str(e)}", "error")
+            self.log_message.emit(str(e), "error")
             self.finished.emit(False)
-
-    def cancel(self):
-        self._is_cancelled = True
-        self.log_message.emit("Cancelling download...", "warning")
-        
+            
 # ============================= Main Window =============================
 class MainWindow(QMainWindow):
     def __init__(self):
