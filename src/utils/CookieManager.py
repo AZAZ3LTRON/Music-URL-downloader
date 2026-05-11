@@ -14,7 +14,7 @@ import json
 
 init(autoreset=True)
 
-from EnhancedMenu import Enhanced_Menu  # assumed existing
+from .EnhancedMenu import Enhanced_Menu  # assumed existing
 
 COOKIE_DIRECTORY = r"cookies"
 os.makedirs(COOKIE_DIRECTORY, exist_ok=True)

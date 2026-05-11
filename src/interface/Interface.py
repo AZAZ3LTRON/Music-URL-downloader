@@ -10,9 +10,9 @@ current_dir = Path(__file__).parent
 include_path = (current_dir / ".." / "include").resolve()
 sys.path.insert(0, str(include_path))
 
-from YoutubeMusicDownloader import Youtube_Downloader   #type: ignore
-from Helpers_Validators import Helpers  #type: ignore
-from EnhancedMenu import Enhanced_Menu #type: ignore
+from src.core.YoutubeMusicDownloader import Youtube_Downloader   #type: ignore
+from src.utils.Validators import Helpers  #type: ignore
+from src.utils.EnhancedMenu import Enhanced_Menu #type: ignore
 
 
 class DownloaderInterface:

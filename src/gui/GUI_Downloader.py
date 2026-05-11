@@ -26,17 +26,9 @@ from PySide6.QtCore import Qt, QThread, Signal, QSize, QUrl
 from PySide6.QtGui import QFont, QTextCursor, QIcon, QPixmap, QPainter, QColor, QDesktopServices
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
-current_dir = Path(__file__).parent
-
-include_path = (current_dir / ".." / "include").resolve()
-interface_path = (current_dir / ".." / "interface").resolve()
-
-sys.path.insert(0, str(include_path))
-sys.path.insert(1, str(interface_path))
-
-from YoutubeMusicDownloader import Youtube_Downloader  # type: ignore
-from Helpers_Validators import Helpers  # type: ignore
-from Interface import DownloaderInterface # type: ignore
+from src.core.YoutubeMusicDownloader import Youtube_Downloader  # type: ignore
+from src.utils.Validators import Helpers  # type: ignore
+from src.interface.Interface import DownloaderInterface # type: ignore
 
 # ============================= Log Entry =============================
 class LogEntry:

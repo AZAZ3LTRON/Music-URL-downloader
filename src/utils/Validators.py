@@ -72,27 +72,6 @@ class Helpers:
             return []
 
     @staticmethod
-    def cleanup_directory(output_directory: Path, log_manager) -> None:
-        """Remove empty directories under output_directory."""
-        removed_count = 0
-        for root, dirs, files in os.walk(output_directory, topdown=False):
-            for dir_name in dirs:
-                dir_path = os.path.join(root, dir_name)
-                try:
-                    if not os.listdir(dir_path):
-                        os.rmdir(dir_path)
-                        removed_count += 1
-                except OSError:
-                    pass
-        if removed_count > 0:
-            log_manager.log_success("Cleaned up empty directories")
-
-    @staticmethod
-    def sanitize_filename(name: str) -> str:
-        """Remove invalid characters for file/folder names."""
-        return re.sub(r'[<>:"/\\|?*]', '_', name)
-
-    @staticmethod
     def validate_resource_youtube(url: str, timeout=30) -> Tuple[bool, str, Optional[Dict]]:
         """Validate YouTube URL and return metadata."""
         command = ["yt-dlp", "--skip-download", "--flat-playlist", "--dump-json", "--no-warnings", url]
@@ -126,6 +105,70 @@ class Helpers:
             return False, "Validation timeout", None
         except Exception as e:
             return False, f"Validation error: {str(e)[:100]}", None
+
+    @staticmethod
+    def validate_spotfiy_url(url: str):
+        """ Validates the spotify url entered"""
+        patterns = [r'^(https?://)?(open\.spotify\.com)/(track|playlist|album|artist)/([a-zA-Z0-9]+)',
+                     r'^spotify:(track|playlist|album|artist):([a-zA-Z0-9]+)$']
+        
+        return any(re.match(p, url, re.IGNORECASE) for p in patterns)
+    
+    @staticmethod
+    def extract_spotify_id(url: str):
+        match = re.search(r'/(track|playlist|album|artist)/([a-zA-Z0-9]+)', url)
+        return match.group(2) if match else None
+    
+    def extract_spotify_playlist_id(url: str):
+        match = re.search(r'/playlist/([a-zA-Z0-9]+)', url)
+        return match.group(1) if match else None
+    
+    def get_spotify_playlist_items(url: str, log_manager) -> List[Dict]:
+        """Fetch track list from a Spotify playlisr using spotdl."""
+        command = ["spotdl", "--playlist", url, "--save-file", "-", "--format", "json"]
+        try:
+            result = subprocess.run(command, captue_output=True, text=True, timeout=30, check=True)
+            # spotdl outputs JSON lines - parse accordingly
+            items = []
+            for line in result.stdou.strip().split('\n'):
+                if line:
+                    items.append(json.loads(line))
+            return items
+        except Exception as e:
+            log_manager.log_error(f"Spotify playlist error: {e}")
+            return []
+    
+    def validate_resource_spotify(url: str, timeout=30) -> Tuple[bool, str, Optional[Dict]]:
+        """ Check whether spotify url provided exist"""
+        command = ["spotdl", url, "--save-file", "-", "--format", "json", "--skip-download"]
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+            if result.returncode == 0:
+                return True, "Spotify resource available", None
+            else:
+                error = result.stderr.lower()
+                if "not found" in error:
+                    return False, "Resource ot found", None
+                return False, f"Validation failed: {error[:100]}", None
+        except subprocess.TimeoutExpired:
+            return False, "Validation timeout", None
+        
+    @staticmethod
+    def cleanup_directory(output_directory: Path, log_manager) -> None:
+        """Remove empty directories under output_directory."""
+        removed = 0
+        for dir_path in sorted(output_directory.rglob('*'), reverse=True):
+            if dir_path.is_dir() and not any(dir_path.iterdir()):
+                dir_path.rmdir()
+                removed += 1
+        if removed:
+            log_manager.log_success(f"Removed {removed} empty director{'y' if removed==1 else 'ies'}")
+
+    @staticmethod
+    def sanitize_filename(name: str) -> str:
+        """Remove invalid characters for file/folder names."""
+        name = re.sub(r'[<>:"/\\|?*]', '_', name).strip('. ')
+        return name if name else "_"
 
     @staticmethod
     def parse_size(size_str: str) -> Optional[int]:

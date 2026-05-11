@@ -10,8 +10,8 @@ import os
 from colorama import init, Fore, Style
 import threading
 
-from CookieManager import CookieManager
-from EnhancedMenu import Enhanced_Menu
+from .CookieManager import CookieManager
+from .EnhancedMenu import Enhanced_Menu
 
 init(autoreset=True)
 

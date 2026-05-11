@@ -9,7 +9,7 @@ from colorama import init, Fore, Style
 
 init(autoreset=True)
 
-from EnhancedMenu import Enhanced_Menu
+from .EnhancedMenu import Enhanced_Menu
 
 class DownloaderUtils:    
     @staticmethod
@@ -41,7 +41,6 @@ class DownloaderUtils:
             print(f"{Fore.RED}✗{Style.RESET_ALL} FFmpeg is not installed")
             print(f"  {Fore.YELLOW}Note:{Style.RESET_ALL} FFmpeg is recommended for audio conversion")
             return False
-        return False
 
     @staticmethod
     def check_ytdlp() -> bool:
@@ -68,6 +67,33 @@ class DownloaderUtils:
                 return True
         else:
             print(f"{Fore.RED}✗{Style.RESET_ALL} yt-dlp is not installed")
+            return False
+
+    @staticmethod
+    def check_spotdl() -> bool:
+        """ Checks if spotdl is installed on user's device"""
+        print(f"\n {Fore.CYAN} Checking for spotdl...")
+        
+        if shutil.which("spotdl"):
+            print(f"{Fore.GREEN}✓{Style.RESET_ALL} spotdl is installed")
+            try:
+                result = subprocess.run(
+                    ["spotdl", "--version"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    version = result.stdout.strip()
+                    print(f"  Version: {Fore.YELLOW}{version}{Style.RESET_ALL}")
+                    return True
+            except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
+                print(f"{Fore.YELLOW}⚠{Style.RESET_ALL} Could not determine spotdl version")
+                return True
+        else:
+            print(f"{Fore.RED}✗{Style.RESET_ALL} spotdl is not installed")
             return False
 
     @staticmethod
@@ -113,7 +139,48 @@ class DownloaderUtils:
         input("\nPress Enter to continue...")
         return True
     
-    
+    @staticmethod
+    def show_spotdl_help():
+        """Display spotdl help menu"""
+        try:
+            # First check if yt-dlp is installed
+            if not DownloaderUtils.check_spotdl():
+                print(f"{Fore.RED}spotdl is not installed. Please install it first.{Style.RESET_ALL}")
+                input("\nPress Enter to continue...")
+                return False
+                
+            result = subprocess.run(
+                ["spotdl", "--help"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+                timeout=30
+            )
+            print("\n" + "=" * 50)
+            # Check if Enhanced_Menu is available
+            try:
+                Enhanced_Menu.print_header("SPOTDL HELP")
+            except:
+                print(f"{Fore.CYAN}SPOTDL HELP{Style.RESET_ALL}")
+            print("=" * 50)
+            print(result.stdout[:1000])
+            print("\n... (output truncated, use 'spotdl --help' for full help)")
+        except subprocess.CalledProcessError as e:
+            try:
+                Enhanced_Menu.print_status(f"Could not get spotdl help: {e}", "error")
+            except:
+                print(f"{Fore.RED}Could not get spotdl help: {e}{Style.RESET_ALL}")
+            return False
+        except FileNotFoundError:
+            print(f"{Fore.RED}spotdl not found. Please install it first.{Style.RESET_ALL}")
+            return False
+        except Exception as e:
+            print(f"{Fore.RED}Unexpected error: {e}{Style.RESET_ALL}")
+            return False
+            
+        input("\nPress Enter to continue...")
+        return True       
     
     
     @staticmethod
@@ -133,7 +200,7 @@ class DownloaderUtils:
             ('colorama', 'colorama'),
             ('tqdm', 'tqdm'),
             ('yt_dlp', 'yt-dlp'),
-            ('tiddl', 'tiddl')
+            ('spotdl', 'spotdl')
         ]
         
         for import_name, package_name in packages_to_check:
@@ -162,10 +229,9 @@ class DownloaderUtils:
         
         dependencies = {
             'yt-dlp': 'yt-dlp',
-            'tiddl': 'tiddl',
             'browser_cookie3': 'browser-cookie3',
             'tqdm': 'tqdm',
-            'colorama': 'colorama'
+            'colorama': 'colorama',
         }
         
         success_count = 0
@@ -217,7 +283,28 @@ class DownloaderUtils:
             print(f"\n{Fore.YELLOW}Some packages failed to install. You may need to install them manually.{Style.RESET_ALL}")
         
         return fail_count == 0
-                
+
+    @staticmethod
+    def setup_spotdl():
+        print(f"{Fore.YELLOW} Installing Spotdl (Special)... {Style.RESET_ALL}")
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "git+https://github.com/TzurSoffer/spotify-downloader"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=60
+            )
+            if result.returncode == 0:
+                print(f"{Fore.GREEN}✓{Style.RESET_ALL} spotdl installed successfully")
+            else:
+                print(f"{Fore.RED}✗{Style.RESET_ALL} Failed to install spotdl")
+                print(f"  Error: {result.stderr[:100]}")
+        except subprocess.TimeoutExpired:
+                print(f"{Fore.RED}✗{Style.RESET_ALL} Installation timeout for spotdl")
+        except Exception as e:
+                print(f"{Fore.RED}✗{Style.RESET_ALL} Error installing spotdl: {e}")
+
     @staticmethod
     def program_info():
         """Display program information"""
@@ -248,7 +335,7 @@ class DownloaderUtils:
             {Fore.CYAN}Requirements:{Style.RESET_ALL}
             • Python 3.7+
             • yt-dlp (For Youtube Music Downloader)
-            • tiddl (For Tidal Downloader)
+            • spotdl (For Spotify Music Downloader)
             • FFmpeg (recommended for audio conversion)
             • Internet connection
             • Particular python libraries & dependencies
