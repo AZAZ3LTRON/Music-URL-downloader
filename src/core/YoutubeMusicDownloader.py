@@ -58,7 +58,7 @@ DOWNLOAD_TIMEOUT = 120
 COOKIE_DIRECTORY = r"cookies"
 os.makedirs(COOKIE_DIRECTORY, exist_ok=True)
 
-class Youtube_Downloader:
+class YoutubeMusicDownloader:
     """Downloader Class that handles the downloading process"""
     def __init__(self):
         """Initialize the downloader with default values"""
@@ -71,7 +71,7 @@ class Youtube_Downloader:
         self.__output_directory = Path("Albums")
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
-        self.__configuration_file = r"config/youtube_downloader.json"
+        self.__configuration_file = r"config/YoutubeMusicDownloader.json"
         self.cookie_manager = CookieManager()
         self.log_manager = Logs_Manager()          # must be thread‑safe now
         self.utils = DownloaderUtils()
@@ -148,79 +148,79 @@ class Youtube_Downloader:
 
     # ==================== User preferences (stays in main class) ====================
     def get_user_preferences(self):
-        """Takes in user input for the download settings"""
-        Enhanced_Menu.print_header("Download Settings", "Configure your music conversion preferences")
+            """Takes in user input for the download settings"""
+            Enhanced_Menu.print_header("Download Settings", "Configure your music conversion preferences")
 
-        # Audio quality
-        while True:
-            audio_quality_input = Enhanced_Menu.get_input(
-                "What bitrate would you like (enter 'choice' to see options): ",
-                "str", default=self.__audio_quality)
-            if not audio_quality_input:
-                self.__audio_quality = "320k"
-                break
-            if audio_quality_input == 'choice':
-                print(f"\n{Fore.CYAN}Available qualities:{Style.RESET_ALL}")
-                print("  auto     - Let yt-dlp choose the best")
-                print("  320k     - High quality (default)")
-                print("  256k     - Very good quality")
-                print("  192k     - Good quality")
-                print("  128k     - Standard quality")
-                print("  8k-160k  - Lower qualities")
-                continue
-            valid_bitrates = ["auto", "disable", "8k", "16k", "24k", "32k", "40k", "48k", "64k",
-                              "80k", "96k", "112k", "128k", "160k", "192k", "224k", "256k", "320k"]
-            if audio_quality_input in valid_bitrates:
-                self.__audio_quality = audio_quality_input.lower()
-                break
-            Enhanced_Menu.print_status("Invalid bitrate. The downloader doesn't support these values", "error")
+            # Audio quality
+            while True:
+                audio_quality_input = Enhanced_Menu.get_input(
+                    "What bitrate would you like (enter 'choice' to see options): ",
+                    "str", default=self.__audio_quality)
+                if not audio_quality_input:
+                    self.__audio_quality = "320k"
+                    break
+                if audio_quality_input == 'choice':
+                    print(f"\n{Fore.CYAN}Available qualities:{Style.RESET_ALL}")
+                    print("  auto     - Let yt-dlp choose the best")
+                    print("  320k     - High quality (default)")
+                    print("  256k     - Very good quality")
+                    print("  192k     - Good quality")
+                    print("  128k     - Standard quality")
+                    print("  8k-160k  - Lower qualities")
+                    continue
+                valid_bitrates = ["auto", "disable", "8k", "16k", "24k", "32k", "40k", "48k", "64k",
+                                "80k", "96k", "112k", "128k", "160k", "192k", "224k", "256k", "320k"]
+                if audio_quality_input in valid_bitrates:
+                    self.__audio_quality = audio_quality_input.lower()
+                    break
+                Enhanced_Menu.print_status("Invalid bitrate. The downloader doesn't support these values", "error")
 
-        # Audio format
-        while True:
-            audio_format_input = Enhanced_Menu.get_input(
-                "What format would you like (enter 'choice' to see options): ",
-                "str", default=self.__audio_format)
-            if not audio_format_input:
-                self.__audio_format = "mp3"
-                break
-            if audio_format_input == 'choice':
-                print(f"\n{Fore.CYAN}Available formats:{Style.RESET_ALL}")
-                print("  mp3  - Most compatible (default)")
-                print("  m4a  - Apple format, good quality")
-                print("  flac - Lossless audio")
-                print("  opus - Excellent compression")
-                print("  ogg  - Open format")
-                print("  wav  - Uncompressed")
-                continue
-            if audio_format_input in ["mp3", "flac", "ogg", "opus", "m4a", "wav"]:
-                self.__audio_format = audio_format_input
-                break
-            Enhanced_Menu.print_status("Invalid format. Downloader doesn't support this format", "error")
+            # Audio format
+            while True:
+                audio_format_input = Enhanced_Menu.get_input(
+                    "What format would you like (enter 'choice' to see options): ",
+                    "str", default=self.__audio_format)
+                if not audio_format_input:
+                    self.__audio_format = "mp3"
+                    break
+                if audio_format_input == 'choice':
+                    print(f"\n{Fore.CYAN}Available formats:{Style.RESET_ALL}")
+                    print("  mp3  - Most compatible (default)")
+                    print("  m4a  - Apple format, good quality")
+                    print("  flac - Lossless audio")
+                    print("  opus - Excellent compression")
+                    print("  ogg  - Open format")
+                    print("  wav  - Uncompressed")
+                    continue
+                if audio_format_input in ["mp3", "flac", "ogg", "opus", "m4a", "wav"]:
+                    self.__audio_format = audio_format_input
+                    break
+                Enhanced_Menu.print_status("Invalid format. Downloader doesn't support this format", "error")
 
-        # Output directory
-        output_path = Enhanced_Menu.get_input(f"Enter output directory (default: {self.__output_directory}): ", "str").strip()
-        if output_path:
-            self.__output_directory = Path(output_path)
-        else:
-            self.__output_directory = Path("Albums")
-        self.__output_directory.mkdir(parents=True, exist_ok=True)
+            # Output directory
+            output_path = Enhanced_Menu.get_input(f"Enter output directory (default: {self.__output_directory}): ", "str").strip()
+            if output_path:
+                self.__output_directory = Path(output_path)
+            else:
+                self.__output_directory = Path("Albums")
+            self.__output_directory.mkdir(parents=True, exist_ok=True)
 
-        # Cookie choice
-        Enhanced_Menu.print_status("Cookie Settings", "info")
-        print(f"\n{Fore.CYAN}Cookies can help with:{Style.RESET_ALL}")
-        print(" Age-restricted content")
-        print(" Region-restricted videos")
-        print(" Private playlists")
-        cookie_choice = Enhanced_Menu.get_input("Use cookies for authentication? (y/n): ", "yn", default=True)
-        if cookie_choice:
-            self.use_cookies = True
-            Enhanced_Menu.print_status("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Manager to help you", "info")
-        else:
-            self.use_cookies = False
-        
-        # Metadata embedding
-        metadata_choice = Enhanced_Menu.get_input("Embed metadata (artist, album, cover art) into files? (y/n):- ", "yn", default=self.__embed_metadata)
-        self.__embed_metadata = metadata_choice
+            # Cookie choice
+            Enhanced_Menu.print_status("Cookie Settings", "info")
+            print(f"\n{Fore.CYAN}Cookies can help with:{Style.RESET_ALL}")
+            print(" Age-restricted content")
+            print(" Region-restricted videos")
+            print(" Private playlists")
+            cookie_choice = Enhanced_Menu.get_input("Use cookies for authentication? (y/n): ", "yn", default=True)
+            if cookie_choice:
+                self.use_cookies = True
+                Enhanced_Menu.print_status("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Manager to help you", "info")
+            else:
+                self.use_cookies = False
+            
+            # Metadata embedding
+            metadata_choice = Enhanced_Menu.get_input("Embed metadata (artist, album, cover art) into files? (y/n):- ", "yn", default=self.__embed_metadata)
+            self.__embed_metadata = metadata_choice
 
     # ==================== Core download methods ====================
     def run_download(self, url: str, output_template: str, additional_args=None):
@@ -793,7 +793,7 @@ def main():
         print(f"{Fore.GREEN}✓{Style.RESET_ALL} Directory '{directory}/' ready")
 
     try:
-        downloader = Youtube_Downloader()
+        downloader = YoutubeMusicDownloader()
         Enhanced_Menu.print_status("Downloader initialized successfully", "success")
         time.sleep(1)
     except Exception as e:
@@ -830,16 +830,16 @@ def main():
             Enhanced_Menu.print_header("PROGRAM SETTINGS", "Configure download preferences")
             
             Enhanced_Menu.print_section("🎵 Download Settings")
-            current_format = downloader._Youtube_Downloader__audio_format
-            current_quality = downloader._Youtube_Downloader__audio_quality
+            current_format = downloader._YoutubeMusicDownloader__audio_format
+            current_quality = downloader._YoutubeMusicDownloader__audio_quality
             Enhanced_Menu.print_menu_item(1, "Audio Format", f"Current: {Fore.GREEN}{current_format.upper()}{Style.RESET_ALL}")
             Enhanced_Menu.print_menu_item(2, "Audio Quality", f"Current: {Fore.GREEN}{current_quality}{Style.RESET_ALL}")
-            current_dir = str(downloader._Youtube_Downloader__output_directory)
+            current_dir = str(downloader._YoutubeMusicDownloader__output_directory)
             Enhanced_Menu.print_menu_item(3, "Output Directory", f"Current: {Fore.CYAN}{current_dir}{Style.RESET_ALL}")
             
             # New metadata option
-            metadata_status = "ENABLED" if downloader._Youtube_Downloader__embed_metadata else "DISABLED"
-            metadata_color = Fore.GREEN if downloader._Youtube_Downloader__embed_metadata else Fore.YELLOW
+            metadata_status = "ENABLED" if downloader._YoutubeMusicDownloader__embed_metadata else "DISABLED"
+            metadata_color = Fore.GREEN if downloader._YoutubeMusicDownloader__embed_metadata else Fore.YELLOW
             Enhanced_Menu.print_menu_item(4, "Metadata Embedding", f"Current: {metadata_color}{metadata_status}{Style.RESET_ALL}")
             
             Enhanced_Menu.print_section("🌐 COOKIE SETTINGS")
@@ -874,7 +874,7 @@ def main():
                 format_choice = Enhanced_Menu.get_input("Select format (1-6)", "int", 1, 6, default=1)
                 if format_choice:
                     new_format = formats[format_choice - 1][1]
-                    downloader._Youtube_Downloader__audio_format = new_format
+                    downloader._YoutubeMusicDownloader__audio_format = new_format
                     Enhanced_Menu.print_status(f"Audio format set to {new_format.upper()}", "success")
                     
             elif choice == 2:
@@ -895,7 +895,7 @@ def main():
                 quality_choice = Enhanced_Menu.get_input("Select quality (1-6)", "int", 1, 6)
                 if quality_choice:
                     new_quality = qualities[quality_choice - 1][0]
-                    downloader._Youtube_Downloader__audio_quality = new_quality
+                    downloader._YoutubeMusicDownloader__audio_quality = new_quality
                     Enhanced_Menu.print_status(f"Audio quality set to {new_quality}", "success")
             
             # Set output
@@ -913,8 +913,8 @@ def main():
                 new_dir = Enhanced_Menu.get_input("New directory path", "str", default=current_dir)
                 if new_dir and new_dir != current_dir:
                     try:
-                        downloader._Youtube_Downloader__output_directory = Path(new_dir)
-                        downloader._Youtube_Downloader__output_directory.mkdir(parents=True, exist_ok=True)
+                        downloader._YoutubeMusicDownloader__output_directory = Path(new_dir)
+                        downloader._YoutubeMusicDownloader__output_directory.mkdir(parents=True, exist_ok=True)
                         Enhanced_Menu.print_status(f"Output directory changed to {new_dir}", "success")
                     except Exception as e:
                         Enhanced_Menu.print_status(f"Error: {str(e)[:50]}", "error")
@@ -929,7 +929,7 @@ def main():
                 print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Cover art (thumbnail)")
                 print()
                 print(f"{Fore.YELLOW}Current status:{Style.RESET_ALL} ", end="")
-                if downloader._Youtube_Downloader__embed_metadata:
+                if downloader._YoutubeMusicDownloader__embed_metadata:
                     print(f"{Fore.GREEN}ENABLED{Style.RESET_ALL}")
                 else:
                     print(f"{Fore.YELLOW}DISABLED{Style.RESET_ALL}")
@@ -937,10 +937,10 @@ def main():
                 new_setting = Enhanced_Menu.get_input(
                     "Enable metadata embedding? (y/n)",
                     "yn",
-                    default=downloader._Youtube_Downloader__embed_metadata
+                    default=downloader._YoutubeMusicDownloader__embed_metadata
                 )
                 if new_setting is not None:
-                    downloader._Youtube_Downloader__embed_metadata = new_setting
+                    downloader._YoutubeMusicDownloader__embed_metadata = new_setting
                     status = "enabled" if new_setting else "disabled"
                     Enhanced_Menu.print_status(f"Metadata embedding {status}", "success")
                 
@@ -1044,10 +1044,10 @@ def main():
             Enhanced_Menu.print_status("Current Settings:", "info", "⚙️")
             
             settings = [
-                ("Format", downloader._Youtube_Downloader__audio_format),
-                ("Quality", downloader._Youtube_Downloader__audio_quality),
-                ("Output", str(downloader._Youtube_Downloader__output_directory)),
-                ("Metadata", "Enabled" if downloader._Youtube_Downloader__embed_metadata else "Disabled"),  # new line
+                ("Format", downloader._YoutubeMusicDownloader__audio_format),
+                ("Quality", downloader._YoutubeMusicDownloader__audio_quality),
+                ("Output", str(downloader._YoutubeMusicDownloader__output_directory)),
+                ("Metadata", "Enabled" if downloader._YoutubeMusicDownloader__embed_metadata else "Disabled"),  # new line
             ]
             
             for setting_name, setting_value in settings:

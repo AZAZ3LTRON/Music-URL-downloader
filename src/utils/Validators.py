@@ -107,17 +107,37 @@ class Helpers:
             return False, f"Validation error: {str(e)[:100]}", None
 
     @staticmethod
-    def validate_spotfiy_url(url: str):
-        """ Validates the spotify url entered"""
-        patterns = [r'^(https?://)?(open\.spotify\.com)/(track|playlist|album|artist)/([a-zA-Z0-9]+)',
-                     r'^spotify:(track|playlist|album|artist):([a-zA-Z0-9]+)$']
-        
-        return any(re.match(p, url, re.IGNORECASE) for p in patterns)
+    def validate_spotify_url(url: str):
+        """ Validate if the URL input is a proper URL and return type"""
+        spotify_patterns = [
+            (r'^https://open\.spotify\.com/track/[A-Za-z0-9]+', 'track'),
+            (r'^https://open\.spotify\.com/album/[A-Za-z0-9]+', 'album'),
+            (r'^https://open\.spotify\.com/playlist/[A-Za-z0-9]+', 'playlist'),
+            (r'^https://open\.spotify\.com/artist/[A-Za-z0-9]+', 'artist'),
+            (r'^spotify:track:[A-Za-z0-9]+$', 'track'),
+            (r'^spotify:album:[A-Za-z0-9]+$', 'album'),
+            (r'^spotify:playlist:[A-Za-z0-9]+$', 'playlist'),
+            (r'^spotify:artist:[A-Za-z0-9]+$', 'artist')
+        ]
+
+        for pattern, typ in spotify_patterns:
+            if re.match(pattern, url, re.IGNORECASE):
+                return True, typ
+        return False, None
     
     @staticmethod
     def extract_spotify_id(url: str):
-        match = re.search(r'/(track|playlist|album|artist)/([a-zA-Z0-9]+)', url)
-        return match.group(2) if match else None
+        """ Extract Spotify ID from URL """
+        patterns = [
+            r'spotify\.com/(track|album|playlist)/([A-Za-z0-9]+)',
+            r'spotify:(track|album|playlist):([A-Za-z0-9]+)'
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(2)
+        return None
     
     def extract_spotify_playlist_id(url: str):
         match = re.search(r'/playlist/([a-zA-Z0-9]+)', url)
@@ -148,10 +168,21 @@ class Helpers:
             else:
                 error = result.stderr.lower()
                 if "not found" in error:
-                    return False, "Resource ot found", None
-                return False, f"Validation failed: {error[:100]}", None
+                    return False, "Resource not found on Spotify", None
+                elif "private" in error or "access" in error:
+                    return False, "Private resource – requires authentication", None
+                elif "unavailable" in error:
+                    return False, "Resource unavailable in your region", None
+                elif "quota" in error or "rate limit" in error:
+                    return False, "Rate limit exceeded, try later", None
+                else:
+                    return False, f"Validation failed: {error[:100]}", None
         except subprocess.TimeoutExpired:
             return False, "Validation timeout", None
+        except FileNotFoundError:
+            return False, "spotdl not found – please install it first", None
+        except Exception as e:
+            return False, f"Validation error: {str(e)[:100]}", None
         
     @staticmethod
     def cleanup_directory(output_directory: Path, log_manager) -> None:
