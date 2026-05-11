@@ -43,11 +43,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from colorama import init, Fore, Style
 
-from CookieManager import CookieManager
-from EnhancedMenu import Enhanced_Menu
-from Logs_Handler import Logs_Manager
-from Downloader_Utils import DownloaderUtils
-from Helpers_Validators import Helpers   # <-- new helpers module
+from utils.CookieManager import CookieManager
+from utils.DownloaderUtils import DownloaderUtils 
+from utils.EnhancedMenu import Enhanced_Menu#  <-- new helpers module
+from utils.Logs_Handler import Logs_Manager
+from utils.Validators import Helpers 
+
 
 init(autoreset=True)
 

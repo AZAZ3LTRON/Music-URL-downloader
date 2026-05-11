@@ -112,10 +112,9 @@ class DownloaderUtils:
             
         input("\nPress Enter to continue...")
         return True
-
-    @staticmethod
-    def check_tiddl() -> bool:
-        pass
+    
+    
+    
     
     @staticmethod
     def check_dependencies():
