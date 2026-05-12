@@ -182,7 +182,6 @@ class DownloaderUtils:
         input("\nPress Enter to continue...")
         return True       
     
-    
     @staticmethod
     def check_dependencies():
         """Check for missing dependencies"""

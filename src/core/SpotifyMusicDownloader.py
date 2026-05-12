@@ -10,7 +10,7 @@ Its features include:
 - Output Directory Choice
 - Zip Downloads choice
 - Metadata Support
-- Organizes albums by artist
+- Organizes downloadz by artist
 - Mass download support (from text file)
 - Log successful downloads
 - Log failed downloads
@@ -20,9 +20,7 @@ Its features include:
 - Batch Processing (with parallel downloads)
 - Resource Validation (Check if links are available)
 
-Please use the latest version of YT-DLP, upgrade it using "pip install --upgrade yt-dlp" or "yt-dlp -U" depending on how you installed it
-Additionally make sure ffmpeg is installed, as that is necessary to parse the music file's metadata if not you will receive postprocessing error in your output
-
+Note: Install spotdl from this github repo: https://github.com/TzurSoffer/spotify-downloader. It makes use of a non API Library, great alternative as the spotify have paywalled access to their API
 Enjoy!
 """
 
@@ -38,7 +36,7 @@ import json
 from functools import wraps
 from pathlib import Path
 from urllib.parse import urlparse
-from typing import Dict
+from typing import Dict, List, Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from colorama import init, Fore, Style
@@ -77,6 +75,7 @@ class SpotifyMusicDownloader:
         self.log_manager = Logs_Manager()          # must be thread‑safe now
         self.utils = DownloaderUtils()
         self.use_cookies = False
+        self.__embed_metadata = False
         
         self.archives_dir = Path("archives")
         self.archives_dir.mkdir(exist_ok=True)
@@ -86,8 +85,8 @@ class SpotifyMusicDownloader:
             self.load_config()
         except Exception as e:
             self.log_manager.log_error(f"Error loading config: {e}")
-
-
+    
+    # ==================== Configuration Managers ====================
     def load_config(self):
         """Load configuration from json file"""
         primary_config = {
@@ -116,7 +115,9 @@ class SpotifyMusicDownloader:
                 self.__audio_format = config["audio_format"]
             if "use_cookies" in config:
                 self.use_cookies = config["use_cookies"]
-                                
+            if "embed_metadata" in config:
+                self.__embed_metadata = config["embed_metadata"]
+                
         except Exception as e:
             self.log_manager.log_error(f"Error loading configuration: {e}")
             self.__output_directory = Path(primary_config["output_directory"])
@@ -137,230 +138,174 @@ class SpotifyMusicDownloader:
                     "retry_delay": RETRY_DELAY,
                     "download_timeout": DOWNLOAD_TIMEOUT,
                     "use_cookies": self.use_cookies,
+                    "embed_metadata": self.__embed_metadata
                 }
             with open(self.__configuration_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
         except Exception as e:
             self.log_manager.log_error(f"Error saving configuration: {e}")
 
+    # ==================== User preferences (stays in main class) ====================
     def get_user_preferences(self):
-        """Takes in user input for the download settings"""
-        Enhanced_Menu.print_header("Download Settings", "Configure your music conversion preferences")
+            """Takes in user input for the download settings"""
+            Enhanced_Menu.print_header("Download Settings", "Configure your music conversion preferences")
 
-        # Audio quality
-        while True:
-            audio_quality_input = Enhanced_Menu.get_input(
-                "What bitrate would you like (enter 'choice' to see options): ",
-                "str", default=self.__audio_quality)
-            if not audio_quality_input:
-                self.__audio_quality = "320k"
-                break
-            if audio_quality_input == 'choice':
-                print(f"\n{Fore.CYAN}Available qualities:{Style.RESET_ALL}")
-                print("  auto     - Let yt-dlp choose the best")
-                print("  320k     - High quality (default)")
-                print("  256k     - Very good quality")
-                print("  192k     - Good quality")
-                print("  128k     - Standard quality")
-                print("  8k-160k  - Lower qualities")
-                continue
-            valid_bitrates = ["auto", "disable", "8k", "16k", "24k", "32k", "40k", "48k", "64k",
-                              "80k", "96k", "112k", "128k", "160k", "192k", "224k", "256k", "320k"]
-            if audio_quality_input in valid_bitrates:
-                self.__audio_quality = audio_quality_input.lower()
-                break
-            Enhanced_Menu.print_status("Invalid bitrate. The downloader doesn't support these values", "error")
+            # Audio quality
+            while True:
+                audio_quality_input = Enhanced_Menu.get_input(
+                    "What bitrate would you like (enter 'choice' to see options): ",
+                    "str", default=self.__audio_quality)
+                if not audio_quality_input:
+                    self.__audio_quality = "320k"
+                    break
+                if audio_quality_input == 'choice':
+                    print(f"\n{Fore.CYAN}Available qualities:{Style.RESET_ALL}")
+                    print("  auto     - Let yt-dlp choose the best")
+                    print("  320k     - High quality (default)")
+                    print("  256k     - Very good quality")
+                    print("  192k     - Good quality")
+                    print("  128k     - Standard quality")
+                    print("  8k-160k  - Lower qualities")
+                    continue
+                valid_bitrates = ["auto", "disable", "8k", "16k", "24k", "32k", "40k", "48k", "64k",
+                                "80k", "96k", "112k", "128k", "160k", "192k", "224k", "256k", "320k"]
+                if audio_quality_input in valid_bitrates:
+                    self.__audio_quality = audio_quality_input.lower()
+                    break
+                Enhanced_Menu.print_status("Invalid bitrate. The downloader doesn't support these values", "error")
 
-        # Audio format
-        while True:
-            audio_format_input = Enhanced_Menu.get_input(
-                "What format would you like (enter 'choice' to see options): ",
-                "str", default=self.__audio_format)
-            if not audio_format_input:
-                self.__audio_format = "mp3"
-                break
-            if audio_format_input == 'choice':
-                print(f"\n{Fore.CYAN}Available formats:{Style.RESET_ALL}")
-                print("  mp3  - Most compatible (default)")
-                print("  m4a  - Apple format, good quality")
-                print("  flac - Lossless audio")
-                print("  opus - Excellent compression")
-                print("  ogg  - Open format")
-                print("  wav  - Uncompressed")
-                continue
-            if audio_format_input in ["mp3", "flac", "ogg", "opus", "m4a", "wav"]:
-                self.__audio_format = audio_format_input
-                break
-            Enhanced_Menu.print_status("Invalid format. Downloader doesn't support this format", "error")
+            # Audio format
+            while True:
+                audio_format_input = Enhanced_Menu.get_input(
+                    "What format would you like (enter 'choice' to see options): ",
+                    "str", default=self.__audio_format)
+                if not audio_format_input:
+                    self.__audio_format = "mp3"
+                    break
+                if audio_format_input == 'choice':
+                    print(f"\n{Fore.CYAN}Available formats:{Style.RESET_ALL}")
+                    print("  mp3  - Most compatible (default)")
+                    print("  m4a  - Apple format, good quality")
+                    print("  flac - Lossless audio")
+                    print("  opus - Excellent compression")
+                    print("  ogg  - Open format")
+                    print("  wav  - Uncompressed")
+                    continue
+                if audio_format_input in ["mp3", "flac", "ogg", "opus", "m4a", "wav"]:
+                    self.__audio_format = audio_format_input
+                    break
+                Enhanced_Menu.print_status("Invalid format. Downloader doesn't support this format", "error")
 
-        # Output directory
-        output_path = Enhanced_Menu.get_input(f"Enter output directory (default: {self.__output_directory}): ", "str").strip()
-        if output_path:
-            self.__output_directory = Path(output_path)
-        else:
-            self.__output_directory = Path("Albums")
-        self.__output_directory.mkdir(parents=True, exist_ok=True)
+            # Output directory
+            output_path = Enhanced_Menu.get_input(f"Enter output directory (default: {self.__output_directory}): ", "str").strip()
+            if output_path:
+                self.__output_directory = Path(output_path)
+            else:
+                self.__output_directory = Path("Albums")
+            self.__output_directory.mkdir(parents=True, exist_ok=True)
 
-        # Cookie choice
-        Enhanced_Menu.print_status("Cookie Settings", "info")
-        print(f"\n{Fore.CYAN}Cookies can help with:{Style.RESET_ALL}")
-        print(" Age-restricted content")
-        print(" Region-restricted videos")
-        print(" Private playlists")
-        cookie_choice = Enhanced_Menu.get_input("Use cookies for authentication? (y/n): ", "yn", default=True)
-        if cookie_choice:
-            self.use_cookies = True
-            Enhanced_Menu.print_status("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Manager to help you", "info")
-        else:
-            self.use_cookies = False
-        
-    def run_download(self, url: str, output_template: str, additional_args=None):
-        """Run yt-dlp download with modern syntax & tqdm progress bar"""
-        # Ensure output directory exists
-        output_directory = os.path.dirname(output_template)
-        if output_directory:
-            os.makedirs(output_directory, exist_ok=True)
+            # Cookie choice
+            Enhanced_Menu.print_status("Cookie Settings", "info")
+            print(f"\n{Fore.CYAN}Cookies can help with:{Style.RESET_ALL}")
+            print(" Age-restricted content")
+            print(" Region-restricted videos")
+            print(" Private playlists")
+            cookie_choice = Enhanced_Menu.get_input("Use cookies for authentication? (y/n): ", "yn", default=True)
+            if cookie_choice:
+                self.use_cookies = True
+                Enhanced_Menu.print_status("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Manager to help you", "info")
+            else:
+                self.use_cookies = False    
+    # ================================================== Core Download Functions ==================================================
+    
+    def run_download(self, url: str, output_template: str = None, extra_args: List[str] = None,
+                    total_items: int = None, item_desc: str = "item") -> bool:
+        """Run spotdl with a custom progress bar that understands track completion and percentages."""
+        if output_template:
+            os.makedirs(os.path.dirname(output_template), exist_ok=True)
 
-        command = [
-            "spotdl",
-            "download",
-            "--format", self.__audio_format,
-            "--bitrate", self.__audio_quality,
+        cmd = [
+            "spotdl", url,
+            "--format", self.audio_format,
+            "--bitrate", self.audio_quality,
             "--output", output_template,
-            "--overwrite",
-            "skip"
+            "--overwrite", "skip",
+            "--print-errors"
         ]
+        if extra_args:
+            cmd.extend(extra_args)
 
-        if self.use_cookies and self.cookie_manager.current_cookie_file:
-            cookie_args = self.cookie_manager.get_arguments_ytdlp()
-            if cookie_args:
-                command.extend(cookie_args)
-                self.log_manager.log_success("Using cookies for better authentication")
-            else:
-                self.log_manager.log_error("Error using cookies")
+        # Setup progress bar
+        if total_items:
+            pbar = tqdm(total=total_items, desc=f"Downloading {item_desc}s", unit=item_desc,
+                        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]")
+        else:
+            pbar = tqdm(desc="Downloading", unit=" steps", total=None,
+                        bar_format="{l_bar}{bar}| {n_fmt} steps [{elapsed}]")
 
-        if additional_args:
-            if isinstance(additional_args, list):
-                command.extend(additional_args)
-            else:
-                command.append(additional_args)
-        command.append(url)
-        
         try:
-            progress_bar = tqdm(
-                desc="Downloading",
-                unit="B",
-                unit_scale=True,
-                unit_divisor=1024,
-                leave=False,
-                bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
-                dynamic_ncols=True
-            )
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, bufsize=1, universal_newlines=True)
 
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-                encoding='utf-8',
-                errors='replace'
-            )
+            completed = 0
+            last_percent = 0
 
-            output_lines = []
             for line in iter(process.stdout.readline, ''):
                 line = line.strip()
-                output_lines.append(line)
-                if "[download]" in line:
-                    try:
-                        percent_match = re.search(r'(\d+\.?\d*)%', line)
-                        if percent_match:
-                            percent = float(percent_match.group(1))
-                            progress_bar.set_description(f"{Fore.CYAN}Downloading: {percent:.1f}%{Style.RESET_ALL}")
+                if not line:
+                    continue
 
-                        size_match = re.search(r'of\s+([\d\.]+\s*[KMGT]?i?B)', line)
-                        if size_match and progress_bar.total is None:
-                            total_str = size_match.group(1)
-                            total_bytes = Helpers.parse_size(total_str)   # FIX: use Helpers
-                            if total_bytes:
-                                progress_bar.total = total_bytes
+                # --- Completion signals ---
+                if any(phrase in line for phrase in ["Finished downloading", "Saved", "Download completed"]):
+                    completed += 1
+                    if total_items:
+                        pbar.update(1)
+                        pbar.set_description(f"Completed {completed}/{total_items}")
+                    else:
+                        pbar.update(1)
+                        pbar.set_description(f"Processed {completed} items" if completed > 0 else "Processing")
+                    last_percent = 0
 
-                        downloaded_match = (re.search(r'([\d\.]+\s*[KMGT]?i?B)\s+at', line) or
-                                            re.search(r'([\d\.]+\s*[KMGT]?i?B)\s+ETA', line) or
-                                            re.search(r'([\d\.]+\s*[KMGT]?i?B)\s*\/', line))
-                        if downloaded_match:
-                            downloaded_str = downloaded_match.group(1)
-                            downloaded_bytes = Helpers.parse_size(downloaded_str)
-                            if downloaded_bytes:
-                                progress_bar.n = downloaded_bytes
+                # --- Percentage from yt-dlp (if present) ---
+                percent_match = re.search(r'(\d+\.?\d*)%', line)
+                if percent_match:
+                    percent = float(percent_match.group(1))
+                    if total_items is None or total_items == 1:
+                        # Single item: show percentage progress
+                        pbar.n = percent / 100.0
+                        pbar.set_description(f"Downloading {percent:.1f}%")
+                        pbar.refresh()
+                    # For multi-item, we ignore per-track percentage to keep bar clean
 
-                        speed_match = re.search(r'at\s+([\d\.]+\s*[KMGT]?i?B/s)', line)
-                        if speed_match:
-                            speed = speed_match.group(1)
-                            progress_bar.set_postfix_str(f"Speed: {speed}")
+                # --- Speed / ETA (only for single item) ---
+                speed_match = re.search(r'at\s+([\d\.]+\s*[KMGT]?i?B/s)', line)
+                if speed_match and (total_items is None or total_items == 1):
+                    pbar.set_postfix_str(f"Speed: {speed_match.group(1)}")
+                eta_match = re.search(r'ETA\s+([\d:]+)', line)
+                if eta_match and (total_items is None or total_items == 1):
+                    pbar.set_postfix_str(f"ETA: {eta_match.group(1)}")
 
-                        eta_match = re.search(r'ETA\s+([\d:]+)', line)
-                        if eta_match:
-                            eta = eta_match.group(1)
-                            progress_bar.set_postfix_str(f"ETA: {eta}")
-
-                        progress_bar.refresh()
-                    except Exception:
-                        continue
-
-                if "100%" in line or "already been downloaded" in line or "[Merger]" in line:
-                    if progress_bar.total and progress_bar.n < progress_bar.total:
-                        progress_bar.n = progress_bar.total
-                    progress_bar.set_description(f"{Fore.GREEN}Downloaded{Style.RESET_ALL}")
-                    progress_bar.set_postfix_str("")
-                    progress_bar.refresh()
+                # Optional: print line for transparency (disable if too noisy)
+                # print(f"  {line}")
 
             process.wait()
-            progress_bar.close()
-            full_output = "\n".join(output_lines)
-
+            pbar.close()
             if process.returncode == 0:
-                return subprocess.CompletedProcess(
-                    args=command,
-                    returncode=0,
-                    stdout=full_output,
-                    stderr=""
-                )
-            else:
-                error_msg = f"Download failed for {url} with code {process.returncode}"
-                if "not found" in full_output.lower():
-                    return False, "Resource not found on Spotify", None
-                elif "private" in full_output or "access" in full_output:
-                    return False, "Private resource – requires authentication", None
-                elif "unavailable" in full_output:
-                    return False, "Resource unavailable in your region", None
-                elif "quota" in full_output or "rate limit" in full_output:
-                    return False, "Rate limit exceeded, try later", None
+                if total_items:
+                    self.log_manager.log_success(f"Downloaded {completed}/{total_items} {item_desc}s from {url}")
                 else:
-                    error_msg += f" - Error: {full_output[-200:] if full_output else 'Unknown'}"
-                    self.log_manager.log_failure(error_msg)
-                    raise subprocess.CalledProcessError(
-                        process.returncode,
-                        command,
-                        output=full_output,
-                        stderr=""
-                    )
-        except subprocess.TimeoutExpired:
-            return False, "Validation timeout", None
-        except FileNotFoundError:
-            error_msg = "spotdl not found. Please install it with: pip install spotdl"
-            self.log_manager.log_error(error_msg)
-            raise RuntimeError(error_msg)
+                    self.log_manager.log_success(f"Downloaded: {url}")
+                return True
+            else:
+                self.log_manager.log_failure(f"spotdl failed for {url}")
+                return False
         except Exception as e:
-            error_msg = f"Unexpected error in run_download: {e}"
-            self.log_manager.log_error(error_msg)
-            if 'progress_bar' in locals():
-                progress_bar.close()
-            raise            
-
-    def _download_with_retry(self, url: str, output_template: str, additional_args: list = None,
-                             item_type: str = "item") -> bool:
+            self.log_manager.log_error(f"Download error: {e}")
+            pbar.close()
+            return False
+    
+    def _download_with_retry(self, url: str, output_template: str, extra_args: list = None,
+                             item_type: str = "item", total_items: int = None) -> bool:
         """Unified retry logic for downloads"""
         for attempt in range(1, MAX_RETRIES + 1):
             Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{MAX_RETRIES})")
@@ -369,7 +314,7 @@ class SpotifyMusicDownloader:
                 time.sleep(RETRY_DELAY)
 
             try:
-                result = self.run_download(url, output_template, additional_args)
+                result = self.run_download(url, output_template, extra_args, total_items=total_items, item_desc=item_type)
                 if result and result.returncode == 0:
                     self.log_manager.log_success(f"Successfully downloaded {item_type}: {url}")
                     if item_type in ['album', 'playlist']:
@@ -393,7 +338,7 @@ class SpotifyMusicDownloader:
                 if attempt == MAX_RETRIES:
                     self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
         return False
-    
+
     def _download_items_concurrently(self, tasks, max_workers=3, desc="Downloading"):
         """
         tasks: list of (url, output_template, additional_args, archive_path, task_id)
@@ -431,79 +376,238 @@ class SpotifyMusicDownloader:
 
         return results
     
+    def _detect_spotify_item_type(self, url: str) -> Optional[str]:
+        """Detect if URL is a track, album, playlist etc."""
+        if re.search(r"spotify\.com/track/", url):
+            return "track"
+        elif re.search(r"spotify\.com/album/", url):
+            return "album"
+        elif re.search(r"spotify\.com/playlist/", url):
+            return "playlist"
+        elif re.search(r"spotify\.com/artist/", url):
+            return "artist"
+        else:
+            return None
+        
+    def download_smart(self, url: str = None):
+        """
+        Automatically detect the type of Spotify URL and call the appropriate download method.
+        If no URL is provided, prompts the user.
+        """
+        Enhanced_Menu.clear_screen()
+        Enhanced_Menu.print_header("Smart Download (Auto-detect)")
+        
+        if not url:
+            url = Enhanced_Menu.get_input("Enter Spotify URL (track/album/playlist)", "str")
+            if url.lower() == 'back':
+                return False
+        
+        if not url:
+            Enhanced_Menu.print_status("No URL provided", "error")
+            return False
+        
+        # Validate URL format first
+        if not (re.search(r"spotify\.com/(track|album|playlist)/", url)):
+            Enhanced_Menu.print_status("Invalid Spotify URL. Must contain /track/, /album/, or /playlist/", "error")
+            return False
+        
+        item_type = self._detect_spotify_type(url)
+        if not item_type:
+            Enhanced_Menu.print_status("Could not detect type (must be track, album, or playlist)", "error")
+            return False
+        
+        Enhanced_Menu.print_status(f"Detected: {item_type.upper()}", "success")
+        print()
+        
+        # Call the corresponding dedicated method
+        if item_type == "track":
+            return self._download_item(
+                item_type="track",
+                url_prompt="",          # not used because we already have url
+                output_template=str(self.__output_directory / "{artist} - {title}.{output-ext}"),
+                confirm_large=False,
+                force_url=url
+            )
+        elif item_type == "album":
+            return self._download_item(
+                item_type="album",
+                url_prompt="",
+                output_template=str(self.__output_directory / "{artist}/{album}/{artist} - {title}.{output-ext}"),
+                confirm_large=True,
+                use_archive=True,
+                force_url=url
+            )
+        elif item_type == "playlist":
+            # Playlist requires a separate handling (not via _download_item because it uses concurrent downloads)
+            return self._download_playlist_direct(url)
+        
+        elif item_type == "artist":
+            return self._download_item(
+                item_type="artist",
+                url_prompt="",
+                output_template=str(self.__output_directory / "{artist}.{output-ext}"),
+                confirm_large=True,
+                use_archive=True,
+                force_url=url
+            )
+        else:
+            return False
+
+    def _download_playlist_direct(self, url: str) -> bool:
+        """Direct playlist download (reused by smart download)"""
+        # Validate resource
+        is_valid, message, metadata = Helpers.validate_spotify_url(url)
+        if not is_valid or metadata.get('type') != 'playlist':
+            Enhanced_Menu.print_status(f"Validation failed: {message}", "failure")
+            return False
+        
+        playlist_count = metadata.get('playlist_count', 0)
+        if playlist_count == 0:
+            Enhanced_Menu.print_status("No tracks found in playlist.", "warning")
+            return False
+        
+        playlist_title = metadata.get('title', 'Unknown Playlist')
+        Enhanced_Menu.print_status(f"Playlist: {playlist_title} ({playlist_count} tracks)", "success")
+        
+        if playlist_count > 50:
+            if not Enhanced_Menu.get_input(f"This playlist has {playlist_count} tracks. Continue? (y/n)", "yn", default=False):
+                Enhanced_Menu.print_status("Download cancelled.", "info")
+                return False
+        
+        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+            self.get_user_preferences()
+        
+        items = Helpers.get_spotify_playlist_items(url, self.log_manager)
+        if not items:
+            Enhanced_Menu.print_status("Failed to retrieve playlist items.", "error")
+            return False
+        
+        order = Enhanced_Menu.get_input("Download order: (t)op-to-bottom or (b)ottom-to-top", "str", default="t")
+        if order.lower() == 'b':
+            items.reverse()
+        
+        playlist_id = re.search(r'playlist/([a-zA-Z0-9]+)', url)
+        if playlist_id:
+            archive_path = self.archives_dir / f"playlist_{playlist_id.group(1)}.txt"
+        else:
+            url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
+            archive_path = self.archives_dir / f"playlist_{url_hash}.txt"
+        
+        safe_title = Helpers.sanitize_filename(playlist_title)
+        playlist_folder = self.__output_directory / safe_title
+        playlist_folder.mkdir(parents=True, exist_ok=True)
+        output_template = str(playlist_folder / "{artist} - {title}.{output-ext}")
+        
+        tasks = []
+        for idx, item in enumerate(items):
+            search_term = f"{item['artist']} - {item['title']}"
+            task_id = f"{idx}_{hashlib.md5(search_term.encode()).hexdigest()[:8]}"
+            additional_args = ["--save-file", str(archive_path)]
+            tasks.append((search_term, output_template, additional_args, archive_path, task_id))
+        
+        if not tasks:
+            Enhanced_Menu.print_status("No tracks to download.", "warning")
+            return False
+        
+        Enhanced_Menu.print_status(f"Starting concurrent download of {len(tasks)} tracks (max 3 at a time)...", "info")
+        results = self._download_items_concurrently(tasks, max_workers=3, desc="Playlist Download")
+        
+        success_count = sum(1 for v in results.values() if v)
+        failed_count = len(results) - success_count
+        
+        print("\n" + "=" * 55)
+        Enhanced_Menu.print_header("Playlist Download Complete")
+        print(f"  {Fore.GREEN}Successfully downloaded: {success_count}{Style.RESET_ALL}")
+        if failed_count > 0:
+            print(f"  {Fore.RED}Failed: {failed_count}{Style.RESET_ALL}")
+        print("=" * 55)
+        
+        return failed_count == 0
+
     def _download_item(self, item_type: str, url_prompt: str, output_template: str,
-                       additional_args: list = None, confirm_large: bool = False,
-                       use_archive: bool = False) -> bool:
-        """Unified download function for tracks, albums, and playlists"""
+                       confirm_large: bool = False, use_archive: bool = False,
+                       force_url: str = None) -> bool:
+        """Unified download function for tracks and albums (playlist handled separately)"""
         while True:
             print("\n" + "=" * 55)
             Enhanced_Menu.clear_screen()
             Enhanced_Menu.print_header(f"Download {item_type.title()}")
-
-            url = Enhanced_Menu.get_input(f"Enter Spotify Music {url_prompt} (or 'back' to return)", "str")
-            if url.lower() == 'back':
-                return False
+            
+            if force_url:
+                url = force_url
+            else:
+                url = Enhanced_Menu.get_input(f"Enter Spotify {url_prompt} (or 'back' to return)", "str")
+                if url.lower() == 'back':
+                    return False
+            
             if not url:
                 Enhanced_Menu.print_status("No URL provided", "error")
+                if force_url:
+                    return False
                 continue
-
-            # Validate URL format
-            if not Helpers.validate_spotify_url(url):
-                Enhanced_Menu.print_status("Invalid Spotify URL. Enter a valid Spotify URL", "error")
-                continue
-
-            # Validate resource availability (using YouTube helper)
-            is_valid, message, metadata = Helpers.validate_resource_spotify(url)
             
-            if not is_valid or not metadata:
+            is_valid, message, metadata = Helpers.validate_spotify_url(url)
+            if not is_valid:
                 Enhanced_Menu.print_status(f"Validation failed: {message}", "error")
+                if force_url:
+                    return False
                 continue
             
             Enhanced_Menu.print_status("Resource information:", "success")
             if item_type == "track":
                 title = metadata.get('title', 'Unknown')
-                artist = metadata.get('artist') or metadata.get('uploader', 'Unknown Artist')
+                artist = metadata.get('artist', 'Unknown Artist')
                 album = metadata.get('album', 'Unknown Album')
                 print(f"  {Fore.CYAN}Track:{Style.RESET_ALL} {title}")
                 print(f"  {Fore.CYAN}Artist:{Style.RESET_ALL} {artist}")
                 if album != 'Unknown Album':
                     print(f"  {Fore.CYAN}Album:{Style.RESET_ALL} {album}")
-                
             elif item_type == "album":
                 album_title = metadata.get('title', 'Unknown Album')
-                album_artist = metadata.get('artist') or metadata.get('uploader', 'Unknown Artist')
-                track_count = metadata.get('playlist_count', '?')   # ← use playlist_count
+                album_artist = metadata.get('artist', 'Unknown Artist')
+                track_count = metadata.get('playlist_count', '?')
                 print(f"  {Fore.CYAN}Album:{Style.RESET_ALL} {album_title}")
                 print(f"  {Fore.CYAN}Artist:{Style.RESET_ALL} {album_artist}")
                 print(f"  {Fore.CYAN}Tracks:{Style.RESET_ALL} {track_count}")
-            print()  # blank line for readability                  
             
-            if is_valid and metadata:
-                if confirm_large and metadata.get('playlist_count', 0) > 50:
-                    count = metadata['playlist_count']
-                    Enhanced_Menu.print_status(f"This {item_type} contains {count} items. This may take a while.","warning")
-                    if not Enhanced_Menu.get_input("Continue with download? (y/n)", "yn", default=False):
-                        Enhanced_Menu.print_status("Download cancelled", "info")
-                        continue
-
-                if use_archive:
-                    playlist_id = Helpers.extract_spotify_playlist_id(url)
-                    if playlist_id:
-                        archive_path = self.archives_dir / f"{playlist_id}.txt"
-                        if additional_args is None:
-                            additional_args = []
-                        additional_args.extend(["--archive", str(archive_path)])
-                        self.log_manager.log_success(f"Using archive: {archive_path}")
+            elif item_type == "artist":
+                artist = metadata.get('artist', 'Unknown Artist')
+                print(f"  {Fore.CYAN}Artist:{Style.RESET_ALL} {artist}")
+            print()
+            
+            if confirm_large and metadata.get('playlist_count', 0) > 50:
+                count = metadata['playlist_count']
+                Enhanced_Menu.print_status(f"This {item_type} contains {count} items. This may take a while.", "warning")
+                if not Enhanced_Menu.get_input("Continue with download? (y/n)", "yn", default=False):
+                    Enhanced_Menu.print_status("Download cancelled", "info")
+                    if force_url:
+                        return False
+                    continue
+                
+            total = metadata.get('playlist_count', None) if item_type in ['album', 'playlist'] else None
+            if use_archive:
+                if 'album' in url:
+                    album_id = re.search(r'album/([a-zA-Z0-9]+)', url)
+                    if album_id:
+                        archive_path = self.archives_dir / f"album_{album_id.group(1)}.txt"
                     else:
-                        self.log_manager.log_warning(f"Could not extract playlist ID from {url}, archive not used")
-
-            # Ask for configuration if desired
+                        archive_path = self.archives_dir / f"album_{hashlib.md5(url.encode()).hexdigest()[:8]}.txt"
+                else:
+                    archive_path = self.archives_dir / f"item_{hashlib.md5(url.encode()).hexdigest()[:8]}.txt"
+                
+                additional_args = ["--save-file", str(archive_path)]
+            else:
+                additional_args = None
+            
             if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
                 self.get_user_preferences()
-
+            
             Enhanced_Menu.print_status(f"Starting {item_type} download...", "info")
-            success = self._download_with_retry(url, output_template, additional_args, item_type)
-
+            success = self._download_with_retry(url, output_template, additional_args, item_type, total_items=total)
+            
+            if force_url:
+                return success
+            
             if success:
                 time.sleep(0.5)
                 another = Enhanced_Menu.get_input(f"\nDownload another {item_type}? (y/n): ", "yn", default=True)
@@ -517,3 +621,319 @@ class SpotifyMusicDownloader:
                     continue
                 else:
                     return False
+
+    # ================================================== Download Functions ==================================================
+
+    def download_track(self):
+        """Download a single track"""
+        return self._download_item(
+            item_type="track",
+            url_prompt="track URL",
+            output_template=str(self.__output_directory / "{artist} - {title}.{output-ext}"),
+            confirm_large=False
+        )
+
+    def download_album(self):
+        """Download an album"""
+        return self._download_item(
+            item_type="album",
+            url_prompt="album URL",
+            output_template=str(self.__output_directory / "{artist}/{album}/{artist} - {title}.{output-ext}"),
+            confirm_large=True,
+            use_archive=True
+        )
+
+    def download_playlist(self):
+        """Download a playlist (original method)"""
+        Enhanced_Menu.clear_screen()
+        Enhanced_Menu.print_header("Download Playlist")
+        url = Enhanced_Menu.get_input("Enter Spotify playlist URL (or 'back' to return): ", "str")
+        if url.lower() == 'back':
+            return False
+        return self._download_playlist_direct(url)
+             
+    def search_and_download(self):
+        """Search for a song by name and download."""
+        Enhanced_Menu.clear_screen()
+        Enhanced_Menu.print_header("Search & Download")
+        song_query = Enhanced_Menu.get_input("Enter song name or search query", "str")
+        if not song_query:
+            Enhanced_Menu.print_status("No query entered", "error")
+            return False
+
+        if Enhanced_Menu.get_input("Configure download settings?", "yn", default=False):
+            self.get_user_preferences()
+
+        output_template = str(self.output_directory / "{artists} - {title}.{output-ext}")
+        success = False
+        for attempt in range(1, self.max_retries + 1):
+            Enhanced_Menu.print_status(f"Attempt {attempt}/{self.max_retries}", "info")
+            if attempt > 1:
+                Enhanced_Menu.print_status(f"Waiting {self.retry_delay} seconds before retry...", "info")
+                time.sleep(self.retry_delay)
+            try:
+                if self.run_download(f":{song_query}", output_template):
+                    success = True
+                    break
+            except Exception as e:
+                self.log_manager.log_error(f"Unexpected error: {e}")
+        if success:
+            self.log_manager.log_success(f"Successfully downloaded: '{song_query}'")
+            return True
+        else:
+            self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: '{song_query}'")
+            return False
+    
+    def download_artist(self):
+        """Download an artist"""
+        return self._download_item(
+            item_type="artist",
+            url_prompt="artist URL",
+            output_template=str(self.__output_directory / "{artist}.{output-ext}"),
+            confirm_large=True,
+            use_archive=True
+        )
+    
+    def download_user_playlist(self):
+        """Download a user's playlist (requires authentication)"""
+        Enhanced_Menu.clear_screen()
+        Enhanced_Menu.print_header("User Playlist Download", "Download your personal playlists")
+
+        Enhanced_Menu.print_status("Note: This requires Spotify authentication", "warning")
+        Enhanced_Menu.print_status("You will be redirected to the Spotify website for authorization", "info")
+
+        proceed = Enhanced_Menu.get_input("Continue? (y/n): ", "yn", default=True)
+        if not proceed:
+            return False
+
+        if Enhanced_Menu.get_input("Configure download settings? (y/n): ", "yn", default=False):
+            self.get_user_preferences()
+
+        output_template = str(self.output_directory / "{playlist}/{artists} - {title}.{output-ext}")
+
+        Enhanced_Menu.print_status("Starting download...", "info")
+
+        try:
+            result = subprocess.run([
+                "spotdl",
+                "download",
+                "all-user-playlists",
+                "--user-auth",
+                "--output", output_template,
+                "--overwrite", "skip",
+                "--bitrate", self.audio_quality,
+                "--format", self.audio_format,
+            ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding='utf-8',
+                timeout=self.download_timeout
+            )
+
+            if result.returncode == 0:
+                self.log_manager.log_success("Successfully downloaded user playlists")
+                if result.stdout:
+                    print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
+                    print(result.stdout[:500])
+                return True
+            else:
+                self.log_manager.log_failure(f"Failed to download user playlists. Return code: {result.returncode}")
+                if result.stderr:
+                    self.log_manager.log_error(f"Error: {result.stderr[:500]}")
+                return False
+
+        except Exception as e:
+            self.log_manager.log_error(f"Unexpected exception: {e}")
+            return False
+
+    def download_user_liked_songs(self):
+        """Download a user's liked songs"""
+        Enhanced_Menu.clear_screen()
+        Enhanced_Menu.print_header("Download Liked Songs", "Download your liked songs")
+
+        Enhanced_Menu.print_status("Note: This requires Spotify authentication", "warning")
+        Enhanced_Menu.print_status("You will be redirected to the Spotify website for authorization", "info")
+
+        proceed = Enhanced_Menu.get_input("Continue? (y/n): ", "yn", default=True)
+        if not proceed:
+            return False
+
+        if Enhanced_Menu.get_input("Configure download settings? (y/n): ", "yn", default=False):
+            self.get_user_preferences()
+
+        output_template = str(self.output_directory / "Liked Songs/{artists} - {title}.{output-ext}")
+        Enhanced_Menu.print_status("Starting download...", "info")
+
+        try:
+            result = subprocess.run([
+                "spotdl",
+                "download",
+                "saved",
+                "--user-auth",
+                "--output", output_template,
+                "--overwrite", "skip",
+                "--bitrate", self.audio_quality,
+                "--format", self.audio_format,
+            ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding='utf-8',
+                timeout=self.download_timeout
+            )
+
+            if result.returncode == 0:
+                self.log_manager.log_success("Successfully downloaded liked songs")
+                if result.stdout:
+                    print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
+                    print(result.stdout[:500])
+                return True
+            else:
+                self.log_manager.log_failure(f"Failed to download liked songs. Return code: {result.returncode}")
+                if result.stderr:
+                    self.log_manager.log_error(f"Error: {result.stderr[:500]}")
+                return False
+
+        except Exception as e:
+            self.log_manager.log_error(f"Unexpected exception: {e}")
+            return False
+
+    def download_user_saved_albums(self):
+        """Download a user's saved albums"""
+        Enhanced_Menu.clear_screen()
+        Enhanced_Menu.print_header("Download Saved albums", "Download your saved albums")
+
+        Enhanced_Menu.print_status("Note: This requires Spotify authentication", "warning")
+        Enhanced_Menu.print_status("You will be redirected to the Spotify website for authorization", "info")
+
+        proceed = Enhanced_Menu.get_input("Continue? (y/n): ", "yn", default=True)
+        if not proceed:
+            return False
+
+        if Enhanced_Menu.get_input("Configure download settings? (y/n): ", "yn", default=False):
+            self.get_user_preferences()
+
+        output_template = str(self.output_directory / "{artists}/{album}/{artists} - {title}.{output-ext}")
+
+        Enhanced_Menu.print_status("Starting download...", "info")
+
+        try:
+            result = subprocess.run([
+                "spotdl",
+                "download",
+                "all-user-saved-albums",
+                "--user-auth",
+                "--output", output_template,
+                "--overwrite", "skip",
+                "--bitrate", self.audio_quality,
+                "--format", self.audio_format,
+            ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding='utf-8',
+                timeout=self.download_timeout
+            )
+
+            if result.returncode == 0:
+                self.log_manager.log_success("Successfully downloaded saved albums")
+                if result.stdout:
+                    print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
+                    print(result.stdout[:500])
+                return True
+            else:
+                self.log_manager.log_failure(f"Failed to download saved albums. Return code: {result.returncode}")
+                if result.stderr:
+                    self.log_manager.log_error(f"Error: {result.stderr[:500]}")
+                return False
+
+        except Exception as e:
+            self.log_manager.log_error(f"Unexpected exception: {e}")
+            return False
+
+    # ================================================== Helpers ==================================================
+
+    def manage_cookies(self):
+        """Calls the cookie management menu"""
+        self.cookie_manager.interactive_menu()
+        if self.cookie_manager.current_cookie_file:
+            use_cookies = Enhanced_Menu.get_input("Enable cookies for future downloads? (y/n)", "yn", default=False)
+            if use_cookies:
+                self.use_cookies = True
+            else:
+                self.use_cookies = False
+            self.save_config()
+
+    def check_spotdl(self):
+        return self.utils.check_spotdl()
+
+    def check_ffmpeg(self):
+        return self.utils.check_ffmpeg()
+
+    def show_spotdl_help(self):
+        return self.utils.show_spotdl_help
+
+    def check_dependencies(self):
+        return self.utils.check_dependencies()
+
+    def setup_spotdl(self):
+        self.utils.setup_spotdl()
+
+    def program_info(self):
+        return self.utils.program_info()
+
+    def troubleshooting(self):
+        print("\n" + "=" * 50)
+        Enhanced_Menu.print_header("TROUBLESHOOTING", "")
+        print("=" * 50)
+        print("Hello, this troubleshooter is to help if you're experiencing problem in the program")
+        print("Running a simple diagnostic. This might take a while.....")
+
+        Enhanced_Menu.print_status("1. Checking spotdl installation...", "info")
+        if not self.check_spotdl():
+            Enhanced_Menu.print_status("spotdl not found or not working", "error")
+            install = Enhanced_Menu.get_input("Install spotdl now? (y/n)", "yn", default=True)
+            if install:
+                self.setup_spotdl()
+
+        Enhanced_Menu.print_status("\n2. Checking FFmpeg installation...", "info")
+        if not self.check_ffmpeg():
+            Enhanced_Menu.print_status("FFmpeg not found (audio conversion might fail)", "error")
+
+        Enhanced_Menu.print_status("\n3. Testing Spotify access...", "info")
+        test_url = "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT"
+        try:
+            test_command = ["spotdl", "--skip-download", "--print-json", test_url]
+            result = subprocess.run(
+                test_command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0:
+                Enhanced_Menu.print_status("Can access Spotify", "success")
+            else:
+                Enhanced_Menu.print_status(f"Cannot access Spotify: {result.stderr[:100]}", "error")
+        except Exception as e:
+            Enhanced_Menu.print_status(f"Test failed: {e}", "error")
+
+        Enhanced_Menu.print_status("\n4. Checking directories...", "info")
+        directories = ["Albums"]
+        for directory in directories:
+            if os.path.exists(directory):
+                Enhanced_Menu.print_status(f"{directory}/ exists", "success")
+            else:
+                Enhanced_Menu.print_status(f"{directory}/ missing", "warning")
+        input("\nPress Enter to continue...")
+        return True
+
+    def reset_to_defaults(self):
+        """Reset all settings to default values"""
+        self.__output_directory = Path("Albums")
+        self.__audio_quality = "320k"
+        self.__audio_format = "mp3"
+        self.use_cookies = False
+        self.save_config()
+        Enhanced_Menu.print_status("Settings reset to defaults", "success")

@@ -655,7 +655,66 @@ class YoutubeMusicDownloader:
         return failed_count == 0
 
     def download_channel(self):
-        pass
+        """Download all videos from an artist/channel using concurrent downloads."""
+        Enhanced_Menu.clear_screen()
+        Enhanced_Menu.print_header("Download Channel")
+
+        url = Enhanced_Menu.get_input("Enter YouTube channel/artist URL (or 'back' to return): ", "str")
+        if url.lower() == 'back':
+            return False
+
+        # Validate URL (you can reuse existing validation)
+        if not Helpers.validate_youtube_url(url):
+            Enhanced_Menu.print_status("Invalid YouTube URL.", "error")
+            return False
+
+        is_valid, message, metadata = Helpers.validate_resource_youtube(url)
+        if not is_valid:
+            Enhanced_Menu.print_status(f"Validation failed: {message}", "failure")
+            return False
+
+        channel_name = metadata.get('channel') or metadata.get('uploader') or "Unknown Channel"
+        video_count = metadata.get('playlist_count', 0)
+        if video_count == 0:
+            Enhanced_Menu.print_status("No videos found in this channel.", "warning")
+            return False
+
+        Enhanced_Menu.print_status(f"Channel: {channel_name} ({video_count} videos)", "success")
+
+        if video_count > 50 and not Enhanced_Menu.get_input(
+            f"This channel has {video_count} videos. Continue? (y/n)", "yn", default=False
+        ):
+            return False
+
+        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
+            self.get_user_preferences()
+
+        # Fetch video list
+        items = self._get_channel_videos(url)   # you'll need this helper (see below)
+        if not items:
+            Enhanced_Menu.print_status("Failed to retrieve channel videos.", "error")
+            return False
+
+        # Setup archive
+        channel_id = self._extract_channel_id(url) or hashlib.md5(url.encode()).hexdigest()[:8]
+        archive_path = self.archives_dir / f"channel_{channel_id}.txt"
+
+        safe_name = Helpers.sanitize_filename(channel_name)
+        channel_folder = self.__output_directory / safe_name
+        channel_folder.mkdir(parents=True, exist_ok=True)
+        output_template = str(channel_folder / "%(title)s.%(ext)s")
+
+        # Build tasks for concurrent download
+        tasks = []
+        for video in items:
+            video_url = f"https://music.youtube.com/watch?v={video['id']}"
+            additional_args = ["--download-archive", str(archive_path)]
+            tasks.append((video_url, output_template, additional_args, archive_path, video['id']))
+
+        results = self._download_items_concurrently(tasks, max_workers=3, desc="Channel Download")
+        success = sum(results.values())
+        print(f"\nDownloaded {success} of {len(tasks)} videos.")
+        return success == len(tasks)
 
     def search_and_download(self):
         """Search for a song and download it"""
