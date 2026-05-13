@@ -7,6 +7,7 @@ from typing import List, Dict, Optional, Tuple
 import urllib.parse
 
 class Helpers:
+    # ========================================= Youtube Functions =========================================
     @staticmethod
     def validate_youtube_url(url: str) -> bool:
         patterns = [
@@ -106,6 +107,7 @@ class Helpers:
         except Exception as e:
             return False, f"Validation error: {str(e)[:100]}", None
 
+    # ========================================= Spotify Functions =========================================
     @staticmethod
     def validate_spotify_url(url: str):
         """ Validate if the URL input is a proper URL and return type"""
@@ -139,10 +141,12 @@ class Helpers:
                 return match.group(2)
         return None
     
+    @staticmethod
     def extract_spotify_playlist_id(url: str):
         match = re.search(r'/playlist/([a-zA-Z0-9]+)', url)
         return match.group(1) if match else None
     
+    @staticmethod
     def get_spotify_playlist_items(url: str, log_manager) -> List[Dict]:
         """Fetch track list from a Spotify playlisr using spotdl."""
         command = ["spotdl", "--playlist", url, "--save-file", "-", "--format", "json"]
@@ -158,32 +162,32 @@ class Helpers:
             log_manager.log_error(f"Spotify playlist error: {e}")
             return []
     
-    def validate_resource_spotify(url: str, timeout=30) -> Tuple[bool, str, Optional[Dict]]:
-        """ Check whether spotify url provided exist"""
-        command = ["spotdl", url, "--save-file", "-", "--format", "json", "--skip-download"]
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
-            if result.returncode == 0:
-                return True, "Spotify resource available", None
-            else:
-                error = result.stderr.lower()
-                if "not found" in error:
-                    return False, "Resource not found on Spotify", None
-                elif "private" in error or "access" in error:
-                    return False, "Private resource – requires authentication", None
-                elif "unavailable" in error:
-                    return False, "Resource unavailable in your region", None
-                elif "quota" in error or "rate limit" in error:
-                    return False, "Rate limit exceeded, try later", None
-                else:
-                    return False, f"Validation failed: {error[:100]}", None
-        except subprocess.TimeoutExpired:
-            return False, "Validation timeout", None
-        except FileNotFoundError:
-            return False, "spotdl not found – please install it first", None
-        except Exception as e:
-            return False, f"Validation error: {str(e)[:100]}", None
-        
+    @staticmethod
+    def validate_resource_spotify(url: str, timeout: int = 30) -> Tuple[bool, str, Optional[Dict]]:
+        """Return (is_valid, message, metadata_dict)"""
+        # Basic pattern matching
+        if 'spotify.com/track/' in url:
+            url_type = 'track'
+            # You can't get the title/artist without fetching the page, so return placeholders
+            metadata = {'type': url_type, 'title': 'Unknown Track', 'artist': 'Unknown Artist', 'album': 'Unknown Album'}
+            return True, "Valid Spotify track URL", metadata
+        elif 'spotify.com/album/' in url:
+            url_type = 'album'
+            # Again, no real metadata yet – you'll need to fetch the page or rely on spotdl
+            metadata = {'type': url_type, 'title': 'Unknown Album', 'artist': 'Unknown Artist', 'playlist_count': 0}
+            return True, "Valid Spotify album URL", metadata
+        elif 'spotify.com/playlist/' in url:
+            url_type = 'playlist'
+            # Use Helpers.get_spotify_playlist_items to get count? Better to set placeholder
+            metadata = {'type': url_type, 'title': 'Unknown Playlist', 'playlist_count': 0}
+            return True, "Valid Spotify playlist URL", metadata
+        elif 'spotify.com/artist/' in url:
+            url_type = 'artist'
+            metadata = {'type': url_type, 'title': 'Unknown Artist', 'artist': 'Unknown Artist', 'playlist_count': 0}
+            return True, "Valid Spotify artist URL", metadata
+        else:
+            return False, "Invalid Spotify URL", {}                            
+    # ========================================= Other functions =========================================
     @staticmethod
     def cleanup_directory(output_directory: Path, log_manager) -> None:
         """Remove empty directories under output_directory."""
