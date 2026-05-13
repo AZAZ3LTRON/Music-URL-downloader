@@ -545,6 +545,80 @@ class YoutubeMusicDownloader:
                 else:
                     return False
 
+    def _validate_channel_url(self, url: str) -> bool:
+        """Check if the URL looks like a YouTube channel."""
+        patterns = [
+            r"youtube\.com/@[\w-]+",
+            r"youtube\.com/channel/[\w-]+",
+            r"youtube\.com/c/[\w-]+",
+            r"youtube\.com/user/[\w-]+",
+        ]
+        return any(re.search(p, url) for p in patterns)
+
+    def _extract_channel_id(self, url: str) -> str:
+        """Extract channel ID from URL (for archive naming). Returns None if not found."""
+        # Try to match /channel/ID
+        match = re.search(r"youtube\.com/channel/([\w-]+)", url)
+        if match:
+            return match.group(1)
+        # For @handle or /c/name we cannot get a stable ID without an API call.
+        # Fallback to a hash of the handle.
+        match = re.search(r"youtube\.com/@([\w-]+)", url)
+        if match:
+            return f"@{match.group(1)}"
+        return None
+
+    def _get_channel_videos(self, channel_url: str, limit: int = 0) -> list:
+        """
+        Use yt-dlp to extract video entries from a channel.
+        Returns a list of dicts with 'id' and optionally 'title'.
+        """
+        command = [
+            "yt-dlp",
+            "--flat-playlist",
+            "--dump-json",
+            "--ignore-errors",
+            "--quiet",
+            "--no-warnings",
+            channel_url
+        ]
+        if limit > 0:
+            command.insert(2, f"--playlist-end={limit}")
+
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                timeout=60
+            )
+            if result.returncode != 0:
+                self.log_manager.log_error(f"yt-dlp channel extraction failed: {result.stderr[:200]}")
+                return []
+
+            items = []
+            for line in result.stdout.strip().split('\n'):
+                if not line.strip():
+                    continue
+                try:
+                    info = json.loads(line)
+                    # Only video entries have an 'id' (playlist items also appear)
+                    if info.get('_type') != 'playlist' and info.get('id'):
+                        items.append({
+                            'id': info['id'],
+                            'title': info.get('title', 'Unknown')
+                        })
+                except json.JSONDecodeError:
+                    continue
+            return items
+        except subprocess.TimeoutExpired:
+            self.log_manager.log_error("Channel video extraction timed out after 60 seconds.")
+            return []
+        except Exception as e:
+            self.log_manager.log_error(f"Unexpected error in _get_channel_videos: {e}")
+            return []
+
     # ==================== Public download methods ====================
     def download_track(self):
         """Download a single track"""
@@ -828,6 +902,7 @@ class YoutubeMusicDownloader:
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.use_cookies = False
+        self.__embed_metadata = False
         self.save_config()
         Enhanced_Menu.print_status("Settings reset to defaults", "success")
 

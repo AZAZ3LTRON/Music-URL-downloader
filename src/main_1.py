@@ -29,12 +29,16 @@ def main():
     """Main function to run the YouTube Downloader with integrated menus."""
     Enhanced_Menu.clear_screen()
     print(f"""{Fore.RED}{Style.BRIGHT}
-    ███╗   ███╗██╗   ██╗███████╗██╗ ██████╗     ██████╗ ██████╗ ███╗   ██╗██╗   ██╗███████╗██████╗ ████████╗███████╗██████╗ 
-    ████╗ ████║██║   ██║██╔════╝██║██╔════╝    ██╔════╝██╔═══██╗████╗  ██║██║   ██║██╔════╝██╔══██╗╚══██╔══╝██╔════╝██╔══██╗
-    ██╔████╔██║██║   ██║███████╗██║██║         ██║     ██║   ██║██╔██╗ ██║██║   ██║█████╗  ██████╔╝   ██║   █████╗  ██████╔╝
-    ██║╚██╔╝██║██║   ██║╚════██║██║██║         ██║     ██║   ██║██║╚██╗██║╚██╗ ██╔╝██╔══╝  ██╔══██╗   ██║   ██╔══╝  ██╔══██╗
-    ██║ ╚═╝ ██║╚██████╔╝███████║██║╚██████╗    ╚██████╗╚██████╔╝██║ ╚████║ ╚████╔╝ ███████╗██║  ██║   ██║   ███████╗██║  ██║
-    ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝                                                                                                 
+        
+██╗   ██╗ ██████╗ ██╗   ██╗████████╗██╗   ██╗██████╗ ███████╗    ███╗   ███╗██╗   ██╗███████╗██╗ ██████╗    ██████╗  ██████╗ ██╗    ██╗███╗   ██╗██╗      ██████╗  █████╗ ██████╗ ███████╗██████╗ 
+╚██╗ ██╔╝██╔═══██╗██║   ██║╚══██╔══╝██║   ██║██╔══██╗██╔════╝    ████╗ ████║██║   ██║██╔════╝██║██╔════╝    ██╔══██╗██╔═══██╗██║    ██║████╗  ██║██║     ██╔═══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗
+ ╚████╔╝ ██║   ██║██║   ██║   ██║   ██║   ██║██████╔╝█████╗      ██╔████╔██║██║   ██║███████╗██║██║         ██║  ██║██║   ██║██║ █╗ ██║██╔██╗ ██║██║     ██║   ██║███████║██║  ██║█████╗  ██████╔╝
+  ╚██╔╝  ██║   ██║██║   ██║   ██║   ██║   ██║██╔══██╗██╔══╝      ██║╚██╔╝██║██║   ██║╚════██║██║██║         ██║  ██║██║   ██║██║███╗██║██║╚██╗██║██║     ██║   ██║██╔══██║██║  ██║██╔══╝  ██╔══██╗
+   ██║   ╚██████╔╝╚██████╔╝   ██║   ╚██████╔╝██████╔╝███████╗    ██║ ╚═╝ ██║╚██████╔╝███████║██║╚██████╗    ██████╔╝╚██████╔╝╚███╔███╔╝██║ ╚████║███████╗╚██████╔╝██║  ██║██████╔╝███████╗██║  ██║
+   ╚═╝    ╚═════╝  ╚═════╝    ╚═╝    ╚═════╝ ╚═════╝ ╚══════╝    ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝    ╚═════╝  ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝
+                                                                                                                                                                                                  
+                                                                                                                                                                                                  
+                                                                                                                                                                                                              
     {Style.RESET_ALL}""")
     print(f"{Fore.YELLOW}{Style.BRIGHT}YouTube Music Downloader{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}Initializing...{Style.RESET_ALL}")
@@ -257,14 +261,15 @@ def main():
         2: lambda: downloader.download_album(),
         3: lambda: downloader.download_playlist(),
         4: lambda: downloader.search_and_download(),
-        5: lambda: downloader.manage_cookies(),
-        6: lambda: downloader.check_dependencies(),
-        7: lambda: handle_settings(),
-        8: lambda: downloader.program_info(),
-        9: lambda: downloader.troubleshooting(),
-        10: lambda: downloader.show_ytdlp_help(),
-        11: lambda: downloader.log_manager.interactive_menu(),
-        12: lambda: handle_exit()
+        5: lambda: downloader.download_channel(),
+        6: lambda: downloader.manage_cookies(),
+        7: lambda: downloader.check_dependencies(),
+        8: lambda: handle_settings(),
+        9: lambda: downloader.program_info(),
+        10: lambda: downloader.troubleshooting(),
+        11: lambda: downloader.show_ytdlp_help(),
+        12: lambda: downloader.log_manager.interactive_menu(),
+        13: lambda: handle_exit()
     }
 
     while True:
@@ -276,22 +281,23 @@ def main():
             Enhanced_Menu.print_menu_item(2, "Download Album")
             Enhanced_Menu.print_menu_item(3, "Download Playlist")
             Enhanced_Menu.print_menu_item(4, "Search & Download a Song")
+            Enhanced_Menu.print_menu_item(5, "Download Artist")
             
             Enhanced_Menu.print_section("⚙️  TOOLS & SETTINGS")
-            Enhanced_Menu.print_menu_item(5, "Manage Cookies (for restricted content)")
-            Enhanced_Menu.print_menu_item(6, "Check Dependencies")
-            Enhanced_Menu.print_menu_item(7, "Program Settings")
+            Enhanced_Menu.print_menu_item(6, "Manage Cookies (for restricted content)")
+            Enhanced_Menu.print_menu_item(7, "Check Dependencies")
+            Enhanced_Menu.print_menu_item(8, "Program Settings")
             
             Enhanced_Menu.print_section("❓ HELP & INFORMATION")
-            Enhanced_Menu.print_menu_item(8, "Show Program Info")
-            Enhanced_Menu.print_menu_item(9, "Troubleshooting")
-            Enhanced_Menu.print_menu_item(10, "Show yt-dlp Help")
+            Enhanced_Menu.print_menu_item(9, "Show Program Info")
+            Enhanced_Menu.print_menu_item(10, "Troubleshooting")
+            Enhanced_Menu.print_menu_item(11, "Show yt-dlp Help")
             
             Enhanced_Menu.print_section("📊 LOG MANAGEMENT")
-            Enhanced_Menu.print_menu_item(11, "Log Manager")
+            Enhanced_Menu.print_menu_item(12, "Log Manager")
             
             Enhanced_Menu.print_section("🚪 EXIT")
-            Enhanced_Menu.print_menu_item(12, "Exit Program")
+            Enhanced_Menu.print_menu_item(13, "Exit Program")
             print(f"\n{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
             Enhanced_Menu.print_status("Current Settings:", "info", "⚙️")
             
@@ -309,7 +315,7 @@ def main():
             print(f"  {Fore.CYAN}Cookies:{Style.RESET_ALL} {cookie_color}{cookie_status}{Style.RESET_ALL}")
             print(f"{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
             
-            choice = Enhanced_Menu.get_input("\nEnter your choice (1-12)", "int", 1, 12)
+            choice = Enhanced_Menu.get_input("\nEnter your choice (1-13)", "int", 1, 13)
             action = actions.get(choice)
             
             if action:
@@ -319,7 +325,7 @@ def main():
                     result = action()
                     
                     # Handle the result if needed
-                    if result is False and choice not in [1,2,3,4,5,6,7,8,9,10,11,12]:
+                    if result is False and choice not in [1,2,3,4,5,6,7,8,9,10,11,12,13]:
                         print()
                         retry = Enhanced_Menu.get_input("Operation failed. Try again? (y/n)", "yn", default=True)
                         if retry:
@@ -333,7 +339,7 @@ def main():
             else:
                 Enhanced_Menu.print_status("Invalid option", "error")
                 
-            if choice != 15:
+            if choice != 13:
                 print()
                 cont = Enhanced_Menu.get_input("Return to main menu? (y/n)", "yn", default=True)
                 if not cont:
