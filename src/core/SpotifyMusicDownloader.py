@@ -60,12 +60,6 @@ class SpotifyMusicDownloader:
     """Downloader class"""
     def __init__(self):
         """Initialize the downloader with default values"""
-        if 'MAX_RETRIES' not in globals():
-            global MAX_RETRIES, RETRY_DELAY, DOWNLOAD_TIMEOUT
-            MAX_RETRIES = 3
-            RETRY_DELAY = 5
-            DOWNLOAD_TIMEOUT = 300
-
         self.__output_directory = Path("Albums")
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
@@ -74,17 +68,60 @@ class SpotifyMusicDownloader:
         self.log_manager = Logs_Manager()          # must be thread‑safe now
         self.utils = DownloaderUtils()
         self.use_cookies = False
-        self.__embed_metadata = False
-        
+
+        self.max_retries = 3
+        self.retry_delay = 10
+        self.download_timeout = 120
+                
         self.archives_dir = Path("archives")
         self.archives_dir.mkdir(exist_ok=True)
         self.__output_directory.mkdir(parents=True, exist_ok=True)
         
+    # Ensure config directory exists
+        os.makedirs(os.path.dirname(self.__configuration_file), exist_ok=True)
+               
         try:
             self.load_config()
         except Exception as e:
             self.log_manager.log_error(f"Error loading config: {e}")
-    
+            
+    # ==================== Public Properties ====================
+    @property
+    def audio_format(self) -> str:
+        """Current audio format (mp3, flac, etc.)"""
+        return self.__audio_format
+
+    @audio_format.setter
+    def audio_format(self, value: str):
+        if value in ["mp3", "flac", "ogg", "opus", "m4a", "wav"]:
+            self.__audio_format = value
+        else:
+            raise ValueError(f"Unsupported audio format: {value}")
+
+    @property
+    def audio_quality(self) -> str:
+        """Current audio bitrate (320k, 192k, auto, etc.)"""
+        return self.__audio_quality
+
+    @audio_quality.setter
+    def audio_quality(self, value: str):
+        valid_qualities = ["auto", "disable", "8k", "16k", "24k", "32k", "40k", "48k", "64k",
+                        "80k", "96k", "112k", "128k", "160k", "192k", "224k", "256k", "320k"]
+        if value in valid_qualities:
+            self.__audio_quality = value
+        else:
+            raise ValueError(f"Unsupported audio quality: {value}")
+
+    @property
+    def output_directory(self) -> Path:
+        """Output directory path"""
+        return self.__output_directory
+
+    @output_directory.setter
+    def output_directory(self, path: Path):
+        self.__output_directory = Path(path)
+        self.__output_directory.mkdir(parents=True, exist_ok=True)
+        
     # ==================== Configuration Managers ====================
     def load_config(self):
         """Load configuration from json file"""
@@ -92,10 +129,10 @@ class SpotifyMusicDownloader:
             "output_directory": "Albums",
             "audio_quality": "320k",
             "audio_format": "mp3",
-            "max_retries": MAX_RETRIES,
-            "retry_delay": RETRY_DELAY,
-            "download_timeout": DOWNLOAD_TIMEOUT,
-            "use_cookies": False
+            "max_retries": 3,
+            "retry_delay": 10,
+            "download_timeout": 120,
+            "use_cookies": False,
         }
         try:
             if os.path.exists(self.__configuration_file):
@@ -106,44 +143,42 @@ class SpotifyMusicDownloader:
                 config = primary_config
                 self.save_config(config)
 
-            if "output_directory" in config:
-                self.__output_directory = Path(config["output_directory"])
-            if "audio_quality" in config:
-                self.__audio_quality = config["audio_quality"]
-            if "audio_format" in config:
-                self.__audio_format = config["audio_format"]
-            if "use_cookies" in config:
-                self.use_cookies = config["use_cookies"]
-            if "embed_metadata" in config:
-                self.__embed_metadata = config["embed_metadata"]
-                
+            self.__output_directory = Path(config["output_directory"])
+            self.__audio_quality = config["audio_quality"]
+            self.__audio_format = config["audio_format"]
+            self.use_cookies = config["use_cookies"]
+            
+            # Update retry/delay settings
+            self.max_retries = config.get("max_retries", 3)
+            self.retry_delay = config.get("retry_delay", 10)
+            self.download_timeout = config.get("download_timeout", 120)
+
         except Exception as e:
             self.log_manager.log_error(f"Error loading configuration: {e}")
             self.__output_directory = Path(primary_config["output_directory"])
             self.__audio_quality = primary_config["audio_quality"]
             self.__audio_format = primary_config["audio_format"]
             self.use_cookies = primary_config["use_cookies"]
-            self.__embed_metadata = primary_config["embed_metadata"]
 
     def save_config(self, config: Dict = None):
         """Save configuration to file"""
         try:
+            os.makedirs(os.path.dirname(self.__configuration_file), exist_ok=True)
             if config is None:
                 config = {
                     "output_directory": str(self.__output_directory),
                     "audio_quality": self.__audio_quality,
                     "audio_format": self.__audio_format,
-                    "max_retries": MAX_RETRIES,
-                    "retry_delay": RETRY_DELAY,
-                    "download_timeout": DOWNLOAD_TIMEOUT,
+                    "max_retries": self.max_retries,
+                    "retry_delay": self.retry_delay,
+                    "download_timeout": self.download_timeout,
                     "use_cookies": self.use_cookies,
-                    "embed_metadata": self.__embed_metadata
                 }
             with open(self.__configuration_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
         except Exception as e:
             self.log_manager.log_error(f"Error saving configuration: {e}")
-
+            
     # ==================== User preferences (stays in main class) ====================
     def get_user_preferences(self):
             """Takes in user input for the download settings"""
@@ -220,9 +255,6 @@ class SpotifyMusicDownloader:
     def run_download(self, url: str, output_template: str = None, extra_args: List[str] = None,
                     total_items: int = None, item_desc: str = "item") -> bool:
         """Run spotdl with a custom progress bar that understands track completion and percentages."""
-        if output_template:
-            os.makedirs(os.path.dirname(output_template), exist_ok=True)
-
         cmd = [
             "spotdl", url,
             "--format", self.audio_format,
@@ -304,40 +336,28 @@ class SpotifyMusicDownloader:
             return False
     
     def _download_with_retry(self, url: str, output_template: str, extra_args: list = None,
-                             item_type: str = "item", total_items: int = None) -> bool:
+                            item_type: str = "item", total_items: int = None) -> bool:
         """Unified retry logic for downloads"""
-        for attempt in range(1, MAX_RETRIES + 1):
-            Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{MAX_RETRIES})")
+        for attempt in range(1, self.max_retries + 1):   # ← use instance attribute
+            Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{self.max_retries})")
             if attempt > 1:
-                print(f"Waiting {RETRY_DELAY} seconds before retry...")
-                time.sleep(RETRY_DELAY)
+                print(f"Waiting {self.retry_delay} seconds before retry...")
+                time.sleep(self.retry_delay)
 
             try:
-                result = self.run_download(url, output_template, extra_args, total_items=total_items, item_desc=item_type)
-                if result and result.returncode == 0:
+                success = self.run_download(url, output_template, extra_args,
+                                            total_items=total_items, item_desc=item_type)
+                if success:
                     self.log_manager.log_success(f"Successfully downloaded {item_type}: {url}")
-                    if item_type in ['album', 'playlist']:
+                    if item_type in ['album', 'playlist', 'artist']:
                         Helpers.cleanup_directory(self.__output_directory, self.log_manager)
                     return True
-                else:
-                    raise subprocess.CalledProcessError(
-                        result.returncode if result else -1,
-                        f"spotdl {url}",
-                        output=result.stdout if result else "",
-                        stderr=result.stderr if result else ""
-                    )
-            except subprocess.CalledProcessError as e:
-                error_msg = str(e)
-                if attempt < MAX_RETRIES:
-                    self.log_manager.log_error(f"Attempt {attempt} failed for {item_type}: {error_msg[:100]}")
-                else:
-                    self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
             except Exception as e:
-                self.log_manager.log_error(f"Unexpected error in attempt {attempt}: {e}")
-                if attempt == MAX_RETRIES:
-                    self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+                self.log_manager.log_error(f"Attempt {attempt} failed: {e}")
+                if attempt == self.max_retries:
+                    self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
         return False
-
+    
     def _download_items_concurrently(self, tasks, max_workers=3, desc="Downloading"):
         """
         tasks: list of (url, output_template, additional_args, archive_path, task_id)
@@ -358,6 +378,8 @@ class SpotifyMusicDownloader:
                     lock = archive_locks[archive_path]
 
                 with lock:
+                    # Acquiring the lock ensures that only one spotdl process
+                    # writes to this archive file at a time, preventing corruption.
                     success = self._download_with_retry(url, tmpl, args, "item")
 
                 with result_lock:
@@ -410,7 +432,7 @@ class SpotifyMusicDownloader:
             Enhanced_Menu.print_status("Invalid Spotify URL. Must contain /track/, /album/, or /playlist/", "error")
             return False
         
-        item_type = self._detect_spotify_type(url)
+        item_type = self._detect_spotify_item_type(url)
         if not item_type:
             Enhanced_Menu.print_status("Could not detect type (must be track, album, or playlist)", "error")
             return False
@@ -545,7 +567,7 @@ class SpotifyMusicDownloader:
                     return False
                 continue
             
-            is_valid, message, metadata = Helpers.validate_spotify_url(url)
+            is_valid, message, metadata = Helpers.validate_resource_spotify(url)
             if not is_valid:
                 Enhanced_Menu.print_status(f"Validation failed: {message}", "error")
                 if force_url:
@@ -852,7 +874,6 @@ class SpotifyMusicDownloader:
             return False
 
     # ================================================== Helpers ==================================================
-
     def manage_cookies(self):
         """Calls the cookie management menu"""
         self.cookie_manager.interactive_menu()
