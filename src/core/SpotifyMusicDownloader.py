@@ -41,14 +41,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from colorama import init, Fore, Style
 
-from src.utils.CookieManager import CookieManager
-from src.utils.DownloaderUtils import DownloaderUtils 
-from src.utils.EnhancedMenu import Enhanced_Menu#  <-- new helpers module
-from src.utils.Logs_Handler import Logs_Manager
-from src.utils.Validators import Helpers 
+from utils.CookieManager import CookieManager
+from utils.DownloaderUtils import DownloaderUtils 
+from utils.EnhancedMenu import Enhanced_Menu
+from utils.Logs_Handler import Logs_Manager
+from utils.Validators import Helpers 
 
 init(autoreset=True)
-
 # ========================= Configuration ==========================
 
 MAX_RETRIES = 3

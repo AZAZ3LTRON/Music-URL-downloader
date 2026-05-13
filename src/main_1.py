@@ -1,3 +1,30 @@
+import re
+import sys
+import os
+import subprocess
+import time
+import hashlib
+import threading
+import json
+
+from functools import wraps
+from pathlib import Path
+from urllib.parse import urlparse
+from typing import Dict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tqdm import tqdm
+from colorama import init, Fore, Style
+
+from utils.CookieManager import CookieManager
+from utils.DownloaderUtils import DownloaderUtils 
+from utils.EnhancedMenu import Enhanced_Menu
+from utils.Logs_Handler import Logs_Manager
+from utils.Validators import Helpers
+
+from core.YoutubeMusicDownloader import YoutubeMusicDownloader
+
+init(autoreset=True)
+
 def main():
     """Main function to run the YouTube Downloader with integrated menus."""
     Enhanced_Menu.clear_screen()

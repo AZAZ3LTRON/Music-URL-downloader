@@ -10,10 +10,9 @@ current_dir = Path(__file__).parent
 include_path = (current_dir / ".." / "include").resolve()
 sys.path.insert(0, str(include_path))
 
-from src.core.YoutubeMusicDownloader import Youtube_Downloader   #type: ignore
-from src.utils.Validators import Helpers  #type: ignore
-from src.utils.EnhancedMenu import Enhanced_Menu #type: ignore
-
+from core.YoutubeMusicDownloader import YoutubeMusicDownloader   #type: ignore
+from utils.Validators import Helpers  #type: ignore
+from utils.EnhancedMenu import Enhanced_Menu #type: ignore
 
 class DownloaderInterface:
     """
@@ -21,7 +20,7 @@ class DownloaderInterface:
     Provides progress callbacks and safe cancellation.
     """
 
-    def __init__(self, downloader: Youtube_Downloader):
+    def __init__(self, downloader: YoutubeMusicDownloader):
         self._downloader = downloader
         self._progress_callback: Optional[Callable[[int, str], None]] = None
         self._cancel_event: Optional[threading.Event] = None
@@ -127,8 +126,8 @@ class DownloaderInterface:
         # for independence; keep in sync with Youtube_Downloader.run_download)
         cmd = [
             "yt-dlp", "-x",
-            "--audio-format", self._downloader._Youtube_Downloader__audio_format,
-            "--audio-quality", self._downloader._Youtube_Downloader__audio_quality,
+            "--audio-format", self._downloader._YoutubeMusicDownloader__audio_format,
+            "--audio-quality", self._downloader._YoutubeMusicDownloader__audio_quality,
             "-o", output_template,
             "--no-overwrites", "--embed-thumbnail",
             "--newline", "--progress", "--quiet", "--no-warnings", "--ignore-errors",
@@ -143,7 +142,7 @@ class DownloaderInterface:
         if additional_args:
             cmd.extend(additional_args if isinstance(additional_args, list) else [additional_args])
         cmd.append(url)
-        if self._downloader._Youtube_Downloader__embed_metadata:
+        if self._downloader._YoutubeMusicDownloader__embed_metadata:
             cmd.append("--add-metadata")
 
         process = subprocess.Popen(
