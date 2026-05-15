@@ -179,6 +179,8 @@ def main():
         4: lambda: downloader.download_playlist(),
         5: lambda: downloader.download_artist(),
         6: lambda: downloader.search_and_download(),
+        
+        # Dont make use of 7,8,9 as functions are problematic        
         7: lambda: downloader.download_user_playlist(),
         8: lambda: downloader.download_user_liked_songs(),
         9: lambda: downloader.download_user_saved_albums(),

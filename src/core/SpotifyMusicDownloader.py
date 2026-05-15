@@ -1,26 +1,30 @@
 """
-Interactive Playlist/Album/Track Downloader using spotdl
+Interactive Playlist/Album/Track Downloader using SpotDL
 
-While Spotify faces ethical challenges, YouTube remains a massive platform for music discovery.
-This program allows you to download music directly from YouTube and YouTube Music.
+With the rise of Artificial Intelligence and the music industry scraping artist work to run in LLMs, Spotify has been the biggest profit from this.
+From the support of ICE, promoting AI Artist on the platform without proper regulations, their exploitative subscriptions fees which they have increased once again,
+putting out Zionist Advertisement, underpaying artist and Daniel Ek's investment in German military AI company Helsing.
 
-Its features include:
+I created this python script to allow you, the user, to download track, albums, personal playlist etc from the Spotify Website. Unfortunately, Spotify have blocked all API request from
+being made due to mass web scrape of their platform by Anna's Archive. If you wish to download from them, you can go to
+
+The program function is to allow you to download music from Spotify urls.
+
+Its features a:
 - Audio Format choice
 - Download Quality choice
 - Output Directory Choice
-- Zip Downloads choice
 - Metadata Support
-- Organizes downloadz by artist
+- Organizes albums by artist
 - Mass download support (from text file)
 - Log successful downloads
 - Log failed downloads
 - Log errors in between downloads
 - Retry downloads
-- Progress bar for downloads
-- Batch Processing (with parallel downloads)
-- Resource Validation (Check if links are available)
+- Resource validation
 
-Note: Install spotdl from this github repo: https://github.com/TzurSoffer/spotify-downloader. It makes use of a non API Library, great alternative as the spotify have paywalled access to their API
+Please make sure you use a VPN in tandem with the program
+
 Enjoy!
 """
 
@@ -715,163 +719,166 @@ class SpotifyMusicDownloader:
             use_archive=True
         )
     
-    def download_user_playlist(self):
-        """Download a user's playlist (requires authentication)"""
-        Enhanced_Menu.clear_screen()
-        Enhanced_Menu.print_header("User Playlist Download", "Download your personal playlists")
 
-        Enhanced_Menu.print_status("Note: This requires Spotify authentication", "warning")
-        Enhanced_Menu.print_status("You will be redirected to the Spotify website for authorization", "info")
+    #  ================================= Problem with functions as spotdl login features has been disabled, till better one is writing  =================================
+    
+    # def download_user_playlist(self):
+    #     """Download a user's playlist (requires authentication)"""
+    #     Enhanced_Menu.clear_screen()
+    #     Enhanced_Menu.print_header("User Playlist Download", "Download your personal playlists")
 
-        proceed = Enhanced_Menu.get_input("Continue? (y/n): ", "yn", default=True)
-        if not proceed:
-            return False
+    #     Enhanced_Menu.print_status("Note: This requires Spotify authentication", "warning")
+    #     Enhanced_Menu.print_status("You will be redirected to the Spotify website for authorization", "info")
 
-        if Enhanced_Menu.get_input("Configure download settings? (y/n): ", "yn", default=False):
-            self.get_user_preferences()
+    #     proceed = Enhanced_Menu.get_input("Continue? (y/n): ", "yn", default=True)
+    #     if not proceed:
+    #         return False
 
-        output_template = str(self.output_directory / "{playlist}/{artists} - {title}.{output-ext}")
+    #     if Enhanced_Menu.get_input("Configure download settings? (y/n): ", "yn", default=False):
+    #         self.get_user_preferences()
 
-        Enhanced_Menu.print_status("Starting download...", "info")
+    #     output_template = str(self.output_directory / "{playlist}/{artists} - {title}.{output-ext}")
 
-        try:
-            result = subprocess.run([
-                "spotdl",
-                "download",
-                "all-user-playlists",
-                "--user-auth",
-                "--output", output_template,
-                "--overwrite", "skip",
-                "--bitrate", self.audio_quality,
-                "--format", self.audio_format,
-            ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding='utf-8',
-                timeout=self.download_timeout
-            )
+    #     Enhanced_Menu.print_status("Starting download...", "info")
 
-            if result.returncode == 0:
-                self.log_manager.log_success("Successfully downloaded user playlists")
-                if result.stdout:
-                    print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
-                    print(result.stdout[:500])
-                return True
-            else:
-                self.log_manager.log_failure(f"Failed to download user playlists. Return code: {result.returncode}")
-                if result.stderr:
-                    self.log_manager.log_error(f"Error: {result.stderr[:500]}")
-                return False
+    #     try:
+    #         result = subprocess.run([
+    #             "spotdl",
+    #             "download",
+    #             "all-user-playlists",
+    #             "--user-auth",
+    #             "--output", output_template,
+    #             "--overwrite", "skip",
+    #             "--bitrate", self.audio_quality,
+    #             "--format", self.audio_format,
+    #         ],
+    #             stdout=subprocess.PIPE,
+    #             stderr=subprocess.PIPE,
+    #             text=True,
+    #             encoding='utf-8',
+    #             timeout=self.download_timeout
+    #         )
 
-        except Exception as e:
-            self.log_manager.log_error(f"Unexpected exception: {e}")
-            return False
+    #         if result.returncode == 0:
+    #             self.log_manager.log_success("Successfully downloaded user playlists")
+    #             if result.stdout:
+    #                 print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
+    #                 print(result.stdout[:500])
+    #             return True
+    #         else:
+    #             self.log_manager.log_failure(f"Failed to download user playlists. Return code: {result.returncode}")
+    #             if result.stderr:
+    #                 self.log_manager.log_error(f"Error: {result.stderr[:500]}")
+    #             return False
 
-    def download_user_liked_songs(self):
-        """Download a user's liked songs"""
-        Enhanced_Menu.clear_screen()
-        Enhanced_Menu.print_header("Download Liked Songs", "Download your liked songs")
+    #     except Exception as e:
+    #         self.log_manager.log_error(f"Unexpected exception: {e}")
+    #         return False
 
-        Enhanced_Menu.print_status("Note: This requires Spotify authentication", "warning")
-        Enhanced_Menu.print_status("You will be redirected to the Spotify website for authorization", "info")
+    # def download_user_liked_songs(self):
+    #     """Download a user's liked songs"""
+    #     Enhanced_Menu.clear_screen()
+    #     Enhanced_Menu.print_header("Download Liked Songs", "Download your liked songs")
 
-        proceed = Enhanced_Menu.get_input("Continue? (y/n): ", "yn", default=True)
-        if not proceed:
-            return False
+    #     Enhanced_Menu.print_status("Note: This requires Spotify authentication", "warning")
+    #     Enhanced_Menu.print_status("You will be redirected to the Spotify website for authorization", "info")
 
-        if Enhanced_Menu.get_input("Configure download settings? (y/n): ", "yn", default=False):
-            self.get_user_preferences()
+    #     proceed = Enhanced_Menu.get_input("Continue? (y/n): ", "yn", default=True)
+    #     if not proceed:
+    #         return False
 
-        output_template = str(self.output_directory / "Liked Songs/{artists} - {title}.{output-ext}")
-        Enhanced_Menu.print_status("Starting download...", "info")
+    #     if Enhanced_Menu.get_input("Configure download settings? (y/n): ", "yn", default=False):
+    #         self.get_user_preferences()
 
-        try:
-            result = subprocess.run([
-                "spotdl",
-                "download",
-                "saved",
-                "--user-auth",
-                "--output", output_template,
-                "--overwrite", "skip",
-                "--bitrate", self.audio_quality,
-                "--format", self.audio_format,
-            ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding='utf-8',
-                timeout=self.download_timeout
-            )
+    #     output_template = str(self.output_directory / "Liked Songs/{artists} - {title}.{output-ext}")
+    #     Enhanced_Menu.print_status("Starting download...", "info")
 
-            if result.returncode == 0:
-                self.log_manager.log_success("Successfully downloaded liked songs")
-                if result.stdout:
-                    print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
-                    print(result.stdout[:500])
-                return True
-            else:
-                self.log_manager.log_failure(f"Failed to download liked songs. Return code: {result.returncode}")
-                if result.stderr:
-                    self.log_manager.log_error(f"Error: {result.stderr[:500]}")
-                return False
+    #     try:
+    #         result = subprocess.run([
+    #             "spotdl",
+    #             "download",
+    #             "saved",
+    #             "--user-auth",
+    #             "--output", output_template,
+    #             "--overwrite", "skip",
+    #             "--bitrate", self.audio_quality,
+    #             "--format", self.audio_format,
+    #         ],
+    #             stdout=subprocess.PIPE,
+    #             stderr=subprocess.PIPE,
+    #             text=True,
+    #             encoding='utf-8',
+    #             timeout=self.download_timeout
+    #         )
 
-        except Exception as e:
-            self.log_manager.log_error(f"Unexpected exception: {e}")
-            return False
+    #         if result.returncode == 0:
+    #             self.log_manager.log_success("Successfully downloaded liked songs")
+    #             if result.stdout:
+    #                 print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
+    #                 print(result.stdout[:500])
+    #             return True
+    #         else:
+    #             self.log_manager.log_failure(f"Failed to download liked songs. Return code: {result.returncode}")
+    #             if result.stderr:
+    #                 self.log_manager.log_error(f"Error: {result.stderr[:500]}")
+    #             return False
 
-    def download_user_saved_albums(self):
-        """Download a user's saved albums"""
-        Enhanced_Menu.clear_screen()
-        Enhanced_Menu.print_header("Download Saved albums", "Download your saved albums")
+    #     except Exception as e:
+    #         self.log_manager.log_error(f"Unexpected exception: {e}")
+    #         return False
 
-        Enhanced_Menu.print_status("Note: This requires Spotify authentication", "warning")
-        Enhanced_Menu.print_status("You will be redirected to the Spotify website for authorization", "info")
+    # def download_user_saved_albums(self):
+    #     """Download a user's saved albums"""
+    #     Enhanced_Menu.clear_screen()
+    #     Enhanced_Menu.print_header("Download Saved albums", "Download your saved albums")
 
-        proceed = Enhanced_Menu.get_input("Continue? (y/n): ", "yn", default=True)
-        if not proceed:
-            return False
+    #     Enhanced_Menu.print_status("Note: This requires Spotify authentication", "warning")
+    #     Enhanced_Menu.print_status("You will be redirected to the Spotify website for authorization", "info")
 
-        if Enhanced_Menu.get_input("Configure download settings? (y/n): ", "yn", default=False):
-            self.get_user_preferences()
+    #     proceed = Enhanced_Menu.get_input("Continue? (y/n): ", "yn", default=True)
+    #     if not proceed:
+    #         return False
 
-        output_template = str(self.output_directory / "{artists}/{album}/{artists} - {title}.{output-ext}")
+    #     if Enhanced_Menu.get_input("Configure download settings? (y/n): ", "yn", default=False):
+    #         self.get_user_preferences()
 
-        Enhanced_Menu.print_status("Starting download...", "info")
+    #     output_template = str(self.output_directory / "{artists}/{album}/{artists} - {title}.{output-ext}")
 
-        try:
-            result = subprocess.run([
-                "spotdl",
-                "download",
-                "all-user-saved-albums",
-                "--user-auth",
-                "--output", output_template,
-                "--overwrite", "skip",
-                "--bitrate", self.audio_quality,
-                "--format", self.audio_format,
-            ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding='utf-8',
-                timeout=self.download_timeout
-            )
+    #     Enhanced_Menu.print_status("Starting download...", "info")
 
-            if result.returncode == 0:
-                self.log_manager.log_success("Successfully downloaded saved albums")
-                if result.stdout:
-                    print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
-                    print(result.stdout[:500])
-                return True
-            else:
-                self.log_manager.log_failure(f"Failed to download saved albums. Return code: {result.returncode}")
-                if result.stderr:
-                    self.log_manager.log_error(f"Error: {result.stderr[:500]}")
-                return False
+    #     try:
+    #         result = subprocess.run([
+    #             "spotdl",
+    #             "download",
+    #             "all-user-saved-albums",
+    #             "--user-auth",
+    #             "--output", output_template,
+    #             "--overwrite", "skip",
+    #             "--bitrate", self.audio_quality,
+    #             "--format", self.audio_format,
+    #         ],
+    #             stdout=subprocess.PIPE,
+    #             stderr=subprocess.PIPE,
+    #             text=True,
+    #             encoding='utf-8',
+    #             timeout=self.download_timeout
+    #         )
 
-        except Exception as e:
-            self.log_manager.log_error(f"Unexpected exception: {e}")
-            return False
+    #         if result.returncode == 0:
+    #             self.log_manager.log_success("Successfully downloaded saved albums")
+    #             if result.stdout:
+    #                 print(f"\n{Fore.CYAN}Output:{Style.RESET_ALL}")
+    #                 print(result.stdout[:500])
+    #             return True
+    #         else:
+    #             self.log_manager.log_failure(f"Failed to download saved albums. Return code: {result.returncode}")
+    #             if result.stderr:
+    #                 self.log_manager.log_error(f"Error: {result.stderr[:500]}")
+    #             return False
+
+    #     except Exception as e:
+    #         self.log_manager.log_error(f"Unexpected exception: {e}")
+    #         return False
 
     # ================================================== Helpers ==================================================
     def manage_cookies(self):
