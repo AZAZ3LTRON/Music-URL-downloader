@@ -49,24 +49,11 @@ from utils.Logs_Handler import Logs_Manager
 from utils.Validators import Helpers
 from utils.DownloadHistory import DownloadHistory
 init(autoreset=True)
-
-# ============================= Pre Config =============================
-MAX_RETRIES = 3
-RETRY_DELAY = 10
-DOWNLOAD_TIMEOUT = 120
-COOKIE_DIRECTORY = r"cookies"
-os.makedirs(COOKIE_DIRECTORY, exist_ok=True)
+os.makedirs("cookies", exist_ok=True)
 
 class YoutubeMusicDownloader:
     """Downloader Class that handles the downloading process"""
     def __init__(self):
-        """Initialize the downloader with default values"""
-        if 'MAX_RETRIES' not in globals():
-            global MAX_RETRIES, RETRY_DELAY, DOWNLOAD_TIMEOUT
-            MAX_RETRIES = 3
-            RETRY_DELAY = 5
-            DOWNLOAD_TIMEOUT = 300
-
         self.__output_directory = Path.home() / "Music" / "YouTubeMusicDownloads"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
@@ -77,6 +64,10 @@ class YoutubeMusicDownloader:
         self.history = DownloadHistory()
         self.use_cookies = False
         self.__embed_metadata = False
+
+        self.max_retries = 3
+        self.retry_delay = 10
+        self.download_timeout = 120
         
         self.archives_dir = Path("archives")
         self.archives_dir.mkdir(exist_ok=True)
@@ -94,9 +85,9 @@ class YoutubeMusicDownloader:
             "output_directory": Path.home() / "Music" / "YouTubeMusicDownloads",
             "audio_quality": "320k",
             "audio_format": "mp3",
-            "max_retries": MAX_RETRIES,
-            "retry_delay": RETRY_DELAY,
-            "download_timeout": DOWNLOAD_TIMEOUT,
+            "max_retries": self.max_retries,
+            "retry_delay": self.retry_delay,
+            "download_timeout": self.download_timeout,
             "use_cookies": False
         }
         try:
@@ -135,9 +126,9 @@ class YoutubeMusicDownloader:
                     "output_directory": str(self.__output_directory),
                     "audio_quality": self.__audio_quality,
                     "audio_format": self.__audio_format,
-                    "max_retries": MAX_RETRIES,
-                    "retry_delay": RETRY_DELAY,
-                    "download_timeout": DOWNLOAD_TIMEOUT,
+                    "max_retries": self.max_retries,
+                    "retry_delay": self.retry_delay,
+                    "download_timeout": self.download_timeout,
                     "use_cookies": self.use_cookies,
                     "embed_metadata": self.__embed_metadata
                 }
@@ -269,6 +260,7 @@ class YoutubeMusicDownloader:
         if self.__embed_metadata:
             command.extend(["--add-metadata"])
 
+        progress_bar = None
         try:
             progress_bar = tqdm(
                 desc="Downloading",
@@ -380,7 +372,7 @@ class YoutubeMusicDownloader:
         except Exception as e:
             error_msg = f"Unexpected error in run_download: {e}"
             self.log_manager.log_error(error_msg)
-            if 'progress_bar' in locals():
+            if progress_bar is not None:
                 progress_bar.close()
             raise
 
@@ -388,11 +380,11 @@ class YoutubeMusicDownloader:
     def _download_with_retry(self, url: str, output_template: str, additional_args: list = None,
                              item_type: str = "item") -> bool:
         """Unified retry logic for downloads"""
-        for attempt in range(1, MAX_RETRIES + 1):
-            Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{MAX_RETRIES})")
+        for attempt in range(1, self.max_retries + 1):
+            Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{self.max_retries})")
             if attempt > 1:
-                print(f"Waiting {RETRY_DELAY} seconds before retry...")
-                time.sleep(RETRY_DELAY)
+                print(f"Waiting {self.retry_delay} seconds before retry...")
+                time.sleep(self.retry_delay)
 
             try:
                 result = self.run_download(url, output_template, additional_args)
@@ -410,14 +402,14 @@ class YoutubeMusicDownloader:
                     )
             except subprocess.CalledProcessError as e:
                 error_msg = str(e)
-                if attempt < MAX_RETRIES:
+                if attempt < self.max_retries:
                     self.log_manager.log_error(f"Attempt {attempt} failed for {item_type}: {error_msg[:100]}")
                 else:
-                    self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+                    self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
             except Exception as e:
                 self.log_manager.log_error(f"Unexpected error in attempt {attempt}: {e}")
-                if attempt == MAX_RETRIES:
-                    self.log_manager.log_failure(f"Failed after {MAX_RETRIES} attempts: {url}")
+                if attempt == self.max_retries:
+                    self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
         return False
 
     # -------------------- Concurrent helper --------------------
@@ -738,7 +730,7 @@ class YoutubeMusicDownloader:
         url = Enhanced_Menu.get_input("Enter YouTube channel/artist URL (or 'back' to return): ", "str")
         if url.lower() == 'back':
             return False
-        self.history.add_input(url, "playlisr")
+        self.history.add_input(url, "channel")
         # Validate URL (you can reuse existing validation)
         if not Helpers.validate_youtube_url(url):
             Enhanced_Menu.print_status("Invalid YouTube URL.", "error")
@@ -805,12 +797,12 @@ class YoutubeMusicDownloader:
         search_time = time.time()
         Enhanced_Menu.print_header("Searching for the song. Browsing through YouTube...")
         output_template = str(self.__output_directory / "%(artist)s - %(title)s.%(ext)s")
-        for attempt in range(1, MAX_RETRIES + 1):
+        for attempt in range(1, self.max_retries + 1):
             print("=" * 50)
             Enhanced_Menu.print_header("Search and download")
             if attempt > 1:
-                print(f"Waiting {RETRY_DELAY} seconds before retry...")
-                time.sleep(RETRY_DELAY)
+                print(f"Waiting {self.retry_delay} seconds before retry...")
+                time.sleep(self.retry_delay)
             try:
                 result = self.run_download(f"ytsearch1:{song_query}", output_template)
                 self.log_manager.log_success(f"Successfully downloaded: '{song_query}'")
@@ -818,7 +810,7 @@ class YoutubeMusicDownloader:
                 return True
             except Exception as e:
                 self.log_manager.log_error(f"Unexpected error: {e}")
-                if attempt < MAX_RETRIES:
+                if attempt < self.max_retries:
                     continue
                 else:
                     return False

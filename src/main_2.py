@@ -29,10 +29,17 @@ def main():
     print(f"{Fore.YELLOW}{Style.BRIGHT}Initializing...{Style.RESET_ALL}")
 
     # Create required directories (the downloader also creates some of these)
-    directories = ["Albums", "cookies"]
-    for directory in directories:
-        Path(directory).mkdir(exist_ok=True)
-        print(f"{Fore.GREEN}✓{Style.RESET_ALL} Directory '{directory}/' ready")
+    # Define directories using pathlib
+    home = Path.home()
+    music_dir = home / "Music"
+    cookies_dir = Path("cookies")   # keep relative or make absolute? See note below.
+
+    # Ensure they exist
+    music_dir.mkdir(parents=True, exist_ok=True)
+    cookies_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"{Fore.GREEN}✓{Style.RESET_ALL} Music directory: {music_dir}")
+    print(f"{Fore.GREEN}✓{Style.RESET_ALL} Cookies directory: {cookies_dir}")
 
     try:
         downloader = SpotifyMusicDownloader()

@@ -53,13 +53,7 @@ from utils.DownloadHistory import DownloadHistory
 from utils.Validators import Helpers 
 
 init(autoreset=True)
-# ========================= Configuration ==========================
-
-MAX_RETRIES = 3
-RETRY_DELAY = 10
-DOWNLOAD_TIMEOUT = 120
-COOKIE_DIRECTORY = r"cookies"
-os.makedirs(COOKIE_DIRECTORY, exist_ok=True)
+os.makedirs("cookies", exist_ok=True)
 
 class SpotifyMusicDownloader:
     """Downloader class"""
