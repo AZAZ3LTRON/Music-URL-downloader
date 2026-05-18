@@ -269,7 +269,8 @@ def main():
         10: lambda: downloader.troubleshooting(),
         11: lambda: downloader.show_ytdlp_help(),
         12: lambda: downloader.log_manager.interactive_menu(),
-        13: lambda: handle_exit()
+        13: lambda: downloader.history.interactive_menu(),
+        14: lambda: handle_exit()
     }
 
     while True:
@@ -295,9 +296,9 @@ def main():
             
             Enhanced_Menu.print_section("📊 LOG MANAGEMENT")
             Enhanced_Menu.print_menu_item(12, "Log Manager")
-            
+            Enhanced_Menu.print_menu_item(13, "Input History")
             Enhanced_Menu.print_section("🚪 EXIT")
-            Enhanced_Menu.print_menu_item(13, "Exit Program")
+            Enhanced_Menu.print_menu_item(14, "Exit Program")
             print(f"\n{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
             Enhanced_Menu.print_status("Current Settings:", "info", "⚙️")
             
@@ -315,7 +316,7 @@ def main():
             print(f"  {Fore.CYAN}Cookies:{Style.RESET_ALL} {cookie_color}{cookie_status}{Style.RESET_ALL}")
             print(f"{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
             
-            choice = Enhanced_Menu.get_input("\nEnter your choice (1-13)", "int", 1, 13)
+            choice = Enhanced_Menu.get_input("\nEnter your choice (1-14)", "int", 1, 14)
             action = actions.get(choice)
             
             if action:
@@ -325,7 +326,7 @@ def main():
                     result = action()
                     
                     # Handle the result if needed
-                    if result is False and choice not in [1,2,3,4,5,6,7,8,9,10,11,12,13]:
+                    if result is False and choice not in [1,2,3,4,5,6,7,8,9,10,11,12,13,14]:
                         print()
                         retry = Enhanced_Menu.get_input("Operation failed. Try again? (y/n)", "yn", default=True)
                         if retry:

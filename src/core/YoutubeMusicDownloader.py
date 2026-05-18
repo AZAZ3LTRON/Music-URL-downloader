@@ -46,8 +46,8 @@ from utils.CookieManager import CookieManager
 from utils.DownloaderUtils import DownloaderUtils 
 from utils.EnhancedMenu import Enhanced_Menu#  <-- new helpers module
 from utils.Logs_Handler import Logs_Manager
-from utils.Validators import Helpers 
-
+from utils.Validators import Helpers
+from utils.DownloadHistory import DownloadHistory
 init(autoreset=True)
 
 # ============================= Pre Config =============================
@@ -74,6 +74,7 @@ class YoutubeMusicDownloader:
         self.cookie_manager = CookieManager()
         self.log_manager = Logs_Manager()          # must be thread‑safe now
         self.utils = DownloaderUtils()
+        self.history = DownloadHistory()
         self.use_cookies = False
         self.__embed_metadata = False
         
@@ -470,6 +471,7 @@ class YoutubeMusicDownloader:
             url = Enhanced_Menu.get_input(f"Enter YouTube Music {url_prompt} (or 'back' to return)", "str")
             if url.lower() == 'back':
                 return False
+            self.history.add_input(url, item_type)
             if not url:
                 Enhanced_Menu.print_status("No URL provided", "error")
                 continue
@@ -647,6 +649,7 @@ class YoutubeMusicDownloader:
         url = Enhanced_Menu.get_input("Enter YouTube Music playlist URL (or 'back' to return): ", "str")
         if url.lower() == 'back':
             return False
+        self.history.add_input(url, "playlist")
         if not url or not Helpers.validate_youtube_url(url):
             Enhanced_Menu.print_status("Invalid YouTube URL.", "error")
             return False
@@ -735,7 +738,7 @@ class YoutubeMusicDownloader:
         url = Enhanced_Menu.get_input("Enter YouTube channel/artist URL (or 'back' to return): ", "str")
         if url.lower() == 'back':
             return False
-
+        self.history.add_input(url, "playlisr")
         # Validate URL (you can reuse existing validation)
         if not Helpers.validate_youtube_url(url):
             Enhanced_Menu.print_status("Invalid YouTube URL.", "error")
@@ -796,6 +799,7 @@ class YoutubeMusicDownloader:
         if not song_query:
             Enhanced_Menu.print_status("No search query provided", "error")
             return False
+        self.history.add_input(song_query, "search")
         if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
             self.get_user_preferences()
         search_time = time.time()

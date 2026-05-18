@@ -173,26 +173,25 @@ def main():
 
     # Action mapping
     actions = {
-        1: lambda: downloader.download_smart(),
-        2: lambda: downloader.download_track(),
-        3: lambda: downloader.download_album(),
-        4: lambda: downloader.download_playlist(),
-        5: lambda: downloader.download_artist(),
-        6: lambda: downloader.search_and_download(),
+        1: lambda: downloader.download_track(),
+        2: lambda: downloader.download_album(),
+        3: lambda: downloader.download_playlist(),
+        4: lambda: downloader.download_artist(),
+        5: lambda: downloader.search_and_download(),
         
         # Dont make use of 7,8,9 as functions are problematic        
-        7: lambda: downloader.download_user_playlist(),
-        8: lambda: downloader.download_user_liked_songs(),
-        9: lambda: downloader.download_user_saved_albums(),
-        10: lambda: downloader.manage_cookies(),
-        11: lambda: downloader.check_dependencies(),
-        12: lambda: downloader.check_spotdl(),          # class method, not .utils
-        13: lambda: handle_settings(),
-        14: lambda: downloader.program_info(),
-        15: lambda: downloader.troubleshooting(),
-        16: lambda: downloader.show_spotdl_help(),
-        17: lambda: downloader.log_manager.interactive_menu(),
-        18: lambda: handle_exit()
+        6: lambda: downloader.download_user_playlist(),
+        7: lambda: downloader.download_user_liked_songs(),
+        8: lambda: downloader.download_user_saved_albums(),
+        9: lambda: downloader.manage_cookies(),
+        10: lambda: downloader.check_dependencies(),
+        11: lambda: downloader.check_spotdl(),          # class method, not .utils
+        12: lambda: handle_settings(),
+        13: lambda: downloader.program_info(),
+        14: lambda: downloader.troubleshooting(),
+        15: lambda: downloader.show_spotdl_help(),
+        16: lambda: downloader.log_manager.interactive_menu(),
+        17: lambda: handle_exit()
     }
 
     while True:
@@ -204,34 +203,33 @@ def main():
             current = get_current_settings()
 
             Enhanced_Menu.print_section("📥 DOWNLOAD OPTIONS")
-            Enhanced_Menu.print_menu_item(1, "Smart Download (Auto-detect track/album/playlist/artist)")
-            Enhanced_Menu.print_menu_item(2, "Download Track")
-            Enhanced_Menu.print_menu_item(3, "Download Album")
-            Enhanced_Menu.print_menu_item(4, "Download Playlist")
-            Enhanced_Menu.print_menu_item(5, "Download Artist")
-            Enhanced_Menu.print_menu_item(6, "Search & Download a Song")
+            Enhanced_Menu.print_menu_item(1, "Download Track")
+            Enhanced_Menu.print_menu_item(2, "Download Album")
+            Enhanced_Menu.print_menu_item(3, "Download Playlist")
+            Enhanced_Menu.print_menu_item(4, "Download Artist")
+            Enhanced_Menu.print_menu_item(5, "Search & Download a Song")
 
             Enhanced_Menu.print_section("🔐 USER-SPECIFIC (requires authentication)")
-            Enhanced_Menu.print_menu_item(7, "Download User Playlist")
-            Enhanced_Menu.print_menu_item(8, "Download User Liked Songs")
-            Enhanced_Menu.print_menu_item(9, "Download User Saved Albums")
+            Enhanced_Menu.print_menu_item(6, "Download User Playlist")
+            Enhanced_Menu.print_menu_item(7, "Download User Liked Songs")
+            Enhanced_Menu.print_menu_item(8, "Download User Saved Albums")
 
             Enhanced_Menu.print_section("⚙️  TOOLS & SETTINGS")
-            Enhanced_Menu.print_menu_item(10, "Manage Cookies")
-            Enhanced_Menu.print_menu_item(11, "Check Dependencies (spotdl & ffmpeg)")
-            Enhanced_Menu.print_menu_item(12, "Check spotdl Version")
-            Enhanced_Menu.print_menu_item(13, "Program Settings")
+            Enhanced_Menu.print_menu_item(9, "Manage Cookies")
+            Enhanced_Menu.print_menu_item(10, "Check Dependencies (spotdl & ffmpeg)")
+            Enhanced_Menu.print_menu_item(11, "Check spotdl Version")
+            Enhanced_Menu.print_menu_item(12, "Program Settings")
 
             Enhanced_Menu.print_section("❓ HELP & INFORMATION")
-            Enhanced_Menu.print_menu_item(14, "Show Program Info")
-            Enhanced_Menu.print_menu_item(15, "Troubleshooting")
-            Enhanced_Menu.print_menu_item(16, "Show spotdl Help")
+            Enhanced_Menu.print_menu_item(13, "Show Program Info")
+            Enhanced_Menu.print_menu_item(14, "Troubleshooting")
+            Enhanced_Menu.print_menu_item(15, "Show spotdl Help")
 
             Enhanced_Menu.print_section("📊 LOG MANAGEMENT")
-            Enhanced_Menu.print_menu_item(17, "Log Manager")
+            Enhanced_Menu.print_menu_item(16, "Log Manager")
 
             Enhanced_Menu.print_section("🚪 EXIT")
-            Enhanced_Menu.print_menu_item(18, "Exit Program")
+            Enhanced_Menu.print_menu_item(17, "Exit Program")
 
             print(f"\n{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
             Enhanced_Menu.print_status("Current Settings:", "info", "⚙️")
@@ -240,14 +238,14 @@ def main():
             print(f"  {Fore.CYAN}Output:{Style.RESET_ALL} {Fore.YELLOW}{current['directory']}{Style.RESET_ALL}")
             print(f"{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
 
-            choice = Enhanced_Menu.get_input("\nEnter your choice (1-18)", "int", 1, 18)
+            choice = Enhanced_Menu.get_input("\nEnter your choice (1-17)", "int", 1, 17)
             action = actions.get(choice)
             if action:
                 Enhanced_Menu.clear_screen()
                 try:
                     result = action()
                     # If a download method returns False (failure), offer retry
-                    if result is False and choice in (2,3,4,5,6,7,8,9):
+                    if result is False and choice in (1,2,3,4,5,6,7,8):
                         print()
                         if Enhanced_Menu.get_input("Operation failed. Try again? (y/n)", "yn", default=True):
                             continue
@@ -260,7 +258,7 @@ def main():
             else:
                 Enhanced_Menu.print_status("Invalid option", "error")
 
-            if choice != 18:
+            if choice != 17:
                 print()
                 if not Enhanced_Menu.get_input("Return to main menu? (y/n)", "yn", default=True):
                     handle_exit()
@@ -280,19 +278,3 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\nAn unexpected error occurred: {e}")
         print("Please check the error log for details.")
-
-
-# -------------------------------------------------------------------
-# RECOMMENDATION: Add these properties to SpotifyMusicDownloader class
-# so you can use `downloader.audio_format` etc. cleanly:
-#
-#   @property
-#   def audio_format(self):
-#       return self.__audio_format
-#   @audio_format.setter
-#   def audio_format(self, value):
-#       self.__audio_format = value
-#
-# Do the same for audio_quality and output_directory.
-# Then remove the get_current_settings/set_current_settings workaround.
-# -------------------------------------------------------------------
