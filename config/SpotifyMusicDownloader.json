@@ -1,5 +1,5 @@
 {
-  "output_directory": "Spotify Downloads",
+  "output_directory": "Music/Spotify",
   "audio_quality": "320k",
   "audio_format": "flac",
   "max_retries": 3,

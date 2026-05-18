@@ -65,7 +65,7 @@ class SpotifyMusicDownloader:
     """Downloader class"""
     def __init__(self):
         """Initialize the downloader with default values"""
-        self.__output_directory = Path("Albums")
+        self.__output_directory = Path.home() / "Music" / "SpotifyDownloads"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.__configuration_file = r"config/SpotifyMusicDownloader.json"
@@ -137,7 +137,7 @@ class SpotifyMusicDownloader:
     def load_config(self):
         """Load configuration from json file"""
         primary_config = {
-            "output_directory": "Albums",
+            "output_directory": Path.home() / "Music" / "SpotifyDownloads",
             "audio_quality": "320k",
             "audio_format": "mp3",
             "max_retries": 3,
@@ -246,7 +246,7 @@ class SpotifyMusicDownloader:
             if output_path:
                 self.__output_directory = Path(output_path)
             else:
-                self.__output_directory = Path("Albums")
+                self.__output_directory = Path.home() / "Music" / "SpotifyDownloads"
             self.__output_directory.mkdir(parents=True, exist_ok=True)
 
             # Cookie choice
@@ -904,19 +904,9 @@ class SpotifyMusicDownloader:
         except Exception as e:
             Enhanced_Menu.print_status(f"Test failed: {e}", "error")
 
-        Enhanced_Menu.print_status("\n4. Checking directories...", "info")
-        directories = ["Albums"]
-        for directory in directories:
-            if os.path.exists(directory):
-                Enhanced_Menu.print_status(f"{directory}/ exists", "success")
-            else:
-                Enhanced_Menu.print_status(f"{directory}/ missing", "warning")
-        input("\nPress Enter to continue...")
-        return True
-
     def reset_to_defaults(self):
         """Reset all settings to default values"""
-        self.__output_directory = Path("Albums")
+        self.__output_directory = Path.home() / "Music" / "SpotifyDownloads"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.use_cookies = False

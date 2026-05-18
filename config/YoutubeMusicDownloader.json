@@ -1,5 +1,5 @@
 {
-  "output_directory": "Youtube Downloads",
+  "output_directory": "Music/Youtube",
   "audio_quality": "320k",
   "audio_format": "flac",
   "max_retries": 3,
