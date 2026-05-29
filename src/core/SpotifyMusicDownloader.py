@@ -120,11 +120,8 @@ class SpotifyMusicDownloader:
     @output_directory.setter
     def output_directory(self, path: Path):
         self.__output_directory = Path(path)
-        self.__output_directory.mkdir(parents=True, exist_ok=True)
-        
-    # ==================== Configuration Managers ====================
+        self.__output_directory.mkdir(parents=True, exist_ok=True)    
     
-    # Added history_method
     def _log_download(self, url, item_type, status, metadata=None, error=None):
         self.history.add_entry(url, item_type, status, metadata=metadata, error=error)
             
@@ -184,7 +181,6 @@ class SpotifyMusicDownloader:
         except Exception as e:
             self.log_manager.log_error(f"Error saving configuration: {e}")
             
-    # ==================== User preferences (stays in main class) ====================
     def get_user_preferences(self):
             """Takes in user input for the download settings"""
             Enhanced_Menu.print_header("Download Settings", "Configure your music conversion preferences")
@@ -255,7 +251,33 @@ class SpotifyMusicDownloader:
                 Enhanced_Menu.print_status("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Manager to help you", "info")
             else:
                 self.use_cookies = False    
-    # ================================================== Core Download Functions ==================================================
+                
+    @staticmethod
+    def rate_limit(calls_per_minute=60):
+        """Rate limit decorator to avoid blockage from (Improved)"""
+        def decorator(func):
+            last_called = [0.0]
+            call_lock = threading.Lock()
+
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                with call_lock:
+                    elapsed_time = time.time() - last_called[0]
+                    wait_time = (60.0 / calls_per_minute) - elapsed_time
+
+                    if wait_time > 0:
+                        time.sleep(wait_time)
+                    last_called[0] = time.time()
+
+                    try:
+                        return func(*args, **kwargs)
+                    except Exception as e:
+                        last_called[0] = time.time() - (60.0 / calls_per_minute)
+                        raise
+            return wrapper
+        return decorator
+    
+    @rate_limit(calls_per_minute=60)
     def run_download(self, url: str, output_template: str = None, extra_args: List[str] = None,
                     total_items: int = None, item_desc: str = "item") -> bool:
         """
@@ -297,8 +319,9 @@ class SpotifyMusicDownloader:
             return False
         except Exception as e:
             self.log_manager.log_error(f"Download process exception: {e}")
-            return False     
-          
+            return False 
+            
+    @rate_limit(calls_per_minute=60)
     def _download_with_retry(self, url: str, output_template: str, extra_args: list = None,
                             item_type: str = "item", total_items: int = None) -> bool:
         """Unified retry logic for downloads"""
@@ -322,6 +345,7 @@ class SpotifyMusicDownloader:
                     self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
         return False
     
+    @rate_limit(calls_per_minute=60)
     def _download_items_concurrently(self, tasks, max_workers=3, desc="Downloading"):
         """
         tasks: list of (url, output_template, additional_args, archive_path, task_id)
@@ -360,7 +384,8 @@ class SpotifyMusicDownloader:
                     pass   # exceptions already handled inside _download_with_retry
 
         return results
-        
+      
+    @rate_limit(calls_per_minute=60)
     def _download_playlist_direct(self, url: str) -> bool:
         """Download a Spotify playlist, falling back to direct URL if metadata is unavailable."""
         Enhanced_Menu.clear_screen()
@@ -463,6 +488,7 @@ class SpotifyMusicDownloader:
         success = self._download_with_retry(url, output_template, additional_args, item_type="playlist")
         return success
 
+    @rate_limit(calls_per_minute=60)
     def _download_item(self, item_type: str, url_prompt: str, output_template: str,
                        confirm_large: bool = False, use_archive: bool = False,
                        force_url: str = None) -> bool:
@@ -563,7 +589,7 @@ class SpotifyMusicDownloader:
                 else:
                     return False
 
-    # ================================================== Download Functions ==================================================
+    @rate_limit(calls_per_minute=60)
     def download_track(self):
         """Download a single track"""
         return self._download_item(
@@ -572,7 +598,8 @@ class SpotifyMusicDownloader:
             output_template=str(self.__output_directory / "{artist} - {title}.{output-ext}"),
             confirm_large=False
         )
-
+        
+    @rate_limit(calls_per_minute=60)
     def download_album(self):
         """Download an album"""
         return self._download_item(
@@ -583,6 +610,7 @@ class SpotifyMusicDownloader:
             use_archive=True
         )
 
+    @rate_limit(calls_per_minute=60)
     def download_playlist(self):
         """Download a playlist (original method)"""
         Enhanced_Menu.clear_screen()
@@ -592,7 +620,8 @@ class SpotifyMusicDownloader:
             return False
         self.history.add_input(url, "playlist")
         return self._download_playlist_direct(url)
-             
+     
+    @rate_limit(calls_per_minute=60)
     def search_and_download(self):
         """Search for a song by name and download."""
         Enhanced_Menu.clear_screen()
@@ -626,6 +655,7 @@ class SpotifyMusicDownloader:
             return False
     
     # Don't use method as issues with spotdl are yet to be resolved
+    @rate_limit(calls_per_minute=60)
     def download_artist(self):
         """Download an artist"""
         return self._download_item(
@@ -796,7 +826,6 @@ class SpotifyMusicDownloader:
     #         self.log_manager.log_error(f"Unexpected exception: {e}")
     #         return False
 
-    # ================================================== Helpers ==================================================
     def manage_cookies(self):
         """Calls the cookie management menu"""
         self.cookie_manager.interactive_menu()
