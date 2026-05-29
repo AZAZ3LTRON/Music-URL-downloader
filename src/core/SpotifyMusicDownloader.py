@@ -236,7 +236,7 @@ class SpotifyMusicDownloader:
                 Enhanced_Menu.print_status("Invalid format. Downloader doesn't support this format", "error")
 
             # Output directory
-            output_path = Enhanced_Menu.get_input(f"Enter output directory (default{self.__output_directory}): ", "str").strip()
+            output_path = Enhanced_Menu.get_input(f"Enter output directory (default: {self.__output_directory}): ", "str").strip()
             if output_path:
                 self.__output_directory = Path(output_path)
             else:
@@ -258,7 +258,10 @@ class SpotifyMusicDownloader:
     # ================================================== Core Download Functions ==================================================
     def run_download(self, url: str, output_template: str = None, extra_args: List[str] = None,
                     total_items: int = None, item_desc: str = "item") -> bool:
-        """Run spotdl with a custom progress bar, showing errors immediately on failure."""
+        """
+        DEBUG version: streams spotdl output directly to console, no progress bar.
+        Revert to the original after debugging.
+        """
         cmd = [
             "spotdl", "download", url,
             "--format", self.audio_format,
@@ -270,102 +273,32 @@ class SpotifyMusicDownloader:
         if extra_args:
             cmd.extend(extra_args)
 
-        # Setup progress bar
-        if total_items:
-            pbar = tqdm(total=total_items, desc=f"Downloading {item_desc}s", unit=item_desc,
-                        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]")
-        else:
-            pbar = tqdm(desc="Downloading", unit=" steps", total=None,
-                        bar_format="{l_bar}{bar}| {n_fmt} steps [{elapsed}]")
-
-        # We'll store all output lines to inspect on failure
-        output_lines = []
-
         try:
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    text=True, bufsize=1, universal_newlines=True)
-
-            completed = 0
-            last_percent = 0
-
-            for line in iter(process.stdout.readline, ''):
-                line = line.strip()
-                if not line:
-                    continue
-
-                # Keep the line for potential error display
-                output_lines.append(line)
-                # Limit memory – keep only last 1000 lines (adjust as needed)
-                if len(output_lines) > 1000:
-                    output_lines = output_lines[-200:]   # keep recent 200
-
-                # --- Completion signals ---
-                if any(phrase in line for phrase in ["Finished downloading", "Saved", "Download completed"]):
-                    completed += 1
-                    if total_items:
-                        pbar.update(1)
-                        pbar.set_description(f"Completed {completed}/{total_items}")
-                    else:
-                        pbar.update(1)
-                        pbar.set_description(f"Processed {completed} items" if completed > 0 else "Processing")
-                    last_percent = 0
-
-                # --- Percentage from yt-dlp (if present) ---
-                percent_match = re.search(r'(\d+\.?\d*)%', line)
-                if percent_match:
-                    percent = float(percent_match.group(1))
-                    if total_items is None or total_items == 1:
-                        pbar.n = percent / 100.0
-                        pbar.set_description(f"Downloading {percent:.1f}%")
-                        pbar.refresh()
-
-                # --- Speed / ETA (only for single item) ---
-                speed_match = re.search(r'at\s+([\d\.]+\s*[KMGT]?i?B/s)', line)
-                if speed_match and (total_items is None or total_items == 1):
-                    pbar.set_postfix_str(f"Speed: {speed_match.group(1)}")
-                eta_match = re.search(r'ETA\s+([\d:]+)', line)
-                if eta_match and (total_items is None or total_items == 1):
-                    pbar.set_postfix_str(f"ETA: {eta_match.group(1)}")
-
-            process.wait()
-            pbar.close()
-
-            if process.returncode == 0:
-                if total_items:
-                    self.log_manager.log_success(f"Downloaded {completed}/{total_items} {item_desc}s from {url}")
+            result = subprocess.run(
+                cmd,
+                stdout=sys.stdout,           
+                stderr=subprocess.PIPE,           
+                text=True,
+                bufsize=1,
+                universal_newlines=True,
+                timeout=self.download_timeout
+            )
+            
+            if result.returncode == 0:
+                self.log_manager.log_success(f"Downloaded {item_desc}: {url}")
                 return True
             else:
-                # Extract lines that look like errors (contain 'error', 'downloaderror', etc.)
-                error_keywords = ['error', 'fail', 'blocked', 'unavailable', 'private',
-                                'forbidden', 'not found', 'quota', 'rate limit']
-                error_lines = []
-                for line in output_lines:
-                    if any(keyword in line.lower() for keyword in error_keywords):
-                        error_lines.append(line)
-
-                # If no obvious error lines, show the last few lines
-                if not error_lines:
-                    error_lines = output_lines[-5:]
-
-                # Display the errors immediately to the console
-                print(f"\n{Fore.RED}===== spotdl error output ====={Style.RESET_ALL}")
-                for err_line in error_lines:
-                    print(f"{Fore.RED}{err_line}{Style.RESET_ALL}")
-                print(f"{Fore.RED}==============================={Style.RESET_ALL}\n")
-
-                # Log each error line to error.log (without console output, to avoid duplication)
-                for err_line in error_lines:
-                    self.log_manager.log_error(f"spotdl: {err_line}", console=False)
-
-                # Also log a summary failure
                 self.log_manager.log_failure(f"spotdl failed for {url}")
+                self.log_manager.log_error(f"spotdl exited with code {result.returncode}")
                 return False
 
-        except Exception as e:
-            self.log_manager.log_error(f"Download process exception: {e}", console=True)
-            pbar.close()
+        except subprocess.TimeoutExpired:
+            self.log_manager.log_error(f"Download timed out after {self.download_timeout}s: {url}")
             return False
-           
+        except Exception as e:
+            self.log_manager.log_error(f"Download process exception: {e}")
+            return False     
+          
     def _download_with_retry(self, url: str, output_template: str, extra_args: list = None,
                             item_type: str = "item", total_items: int = None) -> bool:
         """Unified retry logic for downloads"""
@@ -429,75 +362,106 @@ class SpotifyMusicDownloader:
         return results
         
     def _download_playlist_direct(self, url: str) -> bool:
-        """Direct playlist download (reused by smart download)"""
-        # Validate resource
-        is_valid, message, metadata = Helpers.validate_spotify_url(url)
-        if not is_valid or metadata.get('type') != 'playlist':
-            Enhanced_Menu.print_status(f"Validation failed: {message}", "failure")
-            return False
-        
-        playlist_count = metadata.get('playlist_count', 0)
-        if playlist_count == 0:
-            Enhanced_Menu.print_status("No tracks found in playlist.", "warning")
-            return False
-        
-        playlist_title = metadata.get('title', 'Unknown Playlist')
-        Enhanced_Menu.print_status(f"Playlist: {playlist_title} ({playlist_count} tracks)", "success")
-        
-        if playlist_count > 50:
-            if not Enhanced_Menu.get_input(f"This playlist has {playlist_count} tracks. Continue? (y/n)", "yn", default=False):
-                Enhanced_Menu.print_status("Download cancelled.", "info")
-                return False
-        
+        """Download a Spotify playlist, falling back to direct URL if metadata is unavailable."""
+        Enhanced_Menu.clear_screen()
+        Enhanced_Menu.print_header("Download Playlist")
+
+        items = None
+        playlist_title = None
+        playlist_count = None
+        meta_available = False
+
+        try:
+            is_valid, message, metadata = Helpers.validate_resource_spotify(url)
+            if not is_valid or metadata.get('type') != 'playlist':
+                Enhanced_Menu.print_status(
+                    f"Validation warning: {message}. Attempting direct download...", "warning"
+                )
+            else:
+                playlist_count = metadata.get('playlist_count', 0)
+                playlist_title = metadata.get('title', 'Unknown Playlist')
+                Enhanced_Menu.print_status(
+                    f"Playlist: {playlist_title} ({playlist_count} tracks)", "success"
+                )
+                if playlist_count > 50:
+                    if not Enhanced_Menu.get_input(
+                        f"This playlist has {playlist_count} tracks. Continue? (y/n)", "yn", default=False
+                    ):
+                        Enhanced_Menu.print_status("Download cancelled.", "info")
+                        return False
+                meta_available = True
+        except Exception as e:
+            Enhanced_Menu.print_status(
+                f"Metadata retrieval failed: {e}. Will try direct download.", "warning"
+            )
+
         if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
             self.get_user_preferences()
-        
-        items = Helpers.get_spotify_playlist_items(url, self.log_manager)
-        if not items:
-            Enhanced_Menu.print_status("Failed to retrieve playlist items.", "error")
-            return False
-        
-        order = Enhanced_Menu.get_input("Download order: (t)op-to-bottom or (b)ottom-to-top", "str", default="t")
-        if order.lower() == 'b':
-            items.reverse()
-        
-        playlist_id = re.search(r'playlist/([a-zA-Z0-9]+)', url)
-        if playlist_id:
-            archive_path = self.archives_dir / f"playlist_{playlist_id.group(1)}.spotdl"
+
+        if meta_available:
+            try:
+                items = Helpers.get_spotify_playlist_items(url, self.log_manager)
+            except Exception as e:
+                Enhanced_Menu.print_status(
+                    f"Failed to retrieve playlist items: {e}. Falling back to direct download.", "warning"
+                )
+
+        playlist_id_match = re.search(r'playlist/([a-zA-Z0-9_-]+)', url)
+        if playlist_id_match:
+            playlist_id = playlist_id_match.group(1)
+            archive_path = self.archives_dir / f"playlist_{playlist_id}.spotdl"
         else:
             url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
             archive_path = self.archives_dir / f"playlist_{url_hash}.spotdl"
-        
-        safe_title = Helpers.sanitize_filename(playlist_title)
-        playlist_folder = self.__output_directory / safe_title
-        playlist_folder.mkdir(parents=True, exist_ok=True)
-        output_template = str(playlist_folder / "{artist} - {title}.{output-ext}")
-        
-        tasks = []
-        for idx, item in enumerate(items):
-            search_term = f"{item['artist']} - {item['title']}"
-            task_id = f"{idx}_{hashlib.md5(search_term.encode()).hexdigest()[:8]}"
-            additional_args = ["--save-file", str(archive_path)]
-            tasks.append((search_term, output_template, additional_args, archive_path, task_id))
-        
-        if not tasks:
-            Enhanced_Menu.print_status("No tracks to download.", "warning")
-            return False
-        
-        Enhanced_Menu.print_status(f"Starting concurrent download of {len(tasks)} tracks (max 3 at a time)...", "info")
-        results = self._download_items_concurrently(tasks, max_workers=3, desc="Playlist Download")
-        
-        success_count = sum(1 for v in results.values() if v)
-        failed_count = len(results) - success_count
-        
-        print("\n" + "=" * 55)
-        Enhanced_Menu.print_header("Playlist Download Complete")
-        print(f"  {Fore.GREEN}Successfully downloaded: {success_count}{Style.RESET_ALL}")
-        if failed_count > 0:
-            print(f"  {Fore.RED}Failed: {failed_count}{Style.RESET_ALL}")
-        print("=" * 55)
-        
-        return failed_count == 0
+
+        if items and len(items) > 0:
+            if not playlist_title:
+                playlist_title = f"Playlist_{playlist_id if playlist_id_match else url_hash}"
+            safe_title = Helpers.sanitize_filename(playlist_title)
+            playlist_folder = self.__output_directory / safe_title
+            playlist_folder.mkdir(parents=True, exist_ok=True)
+            output_template = str(playlist_folder / "{artist} - {title}.{output-ext}")
+
+            order = Enhanced_Menu.get_input(
+                "Download order: (t)op-to-bottom or (b)ottom-to-top", "str", default="t"
+            )
+            if order.lower() == 'b':
+                items.reverse()
+
+            tasks = []
+            for idx, item in enumerate(items):
+                search_term = f"{item['artist']} - {item['title']}"
+                task_id = f"{idx}_{hashlib.md5(search_term.encode()).hexdigest()[:8]}"
+                additional_args = ["--save-file", str(archive_path)]
+                tasks.append((search_term, output_template, additional_args, archive_path, task_id))
+
+            Enhanced_Menu.print_status(
+                f"Starting concurrent download of {len(tasks)} tracks (max 3 at a time)...", "info"
+            )
+            results = self._download_items_concurrently(
+                tasks, max_workers=3, desc="Playlist Download"
+            )
+            success_count = sum(1 for v in results.values() if v)
+            failed_count = len(results) - success_count
+
+            print("\n" + "=" * 55)
+            Enhanced_Menu.print_header("Playlist Download Complete")
+            print(f"  {Fore.GREEN}Successfully downloaded: {success_count}{Style.RESET_ALL}")
+            if failed_count > 0:
+                print(f"  {Fore.RED}Failed: {failed_count}{Style.RESET_ALL}")
+            print("=" * 55)
+            return failed_count == 0
+
+        Enhanced_Menu.print_status(
+            "No track list available. Downloading playlist directly with spotdl (may be less organized).",
+            "info"
+        )
+        # spotdl will use the {playlist} placeholder and create its own folder.
+        output_template = str(self.__output_directory / "{playlist}/{artists} - {title}.{output-ext}")
+        additional_args = ["--save-file", str(archive_path)]
+
+        success = self._download_with_retry(url, output_template, additional_args, item_type="playlist")
+        return success
 
     def _download_item(self, item_type: str, url_prompt: str, output_template: str,
                        confirm_large: bool = False, use_archive: bool = False,
@@ -623,7 +587,7 @@ class SpotifyMusicDownloader:
         """Download a playlist (original method)"""
         Enhanced_Menu.clear_screen()
         Enhanced_Menu.print_header("Download Playlist")
-        url = Enhanced_Menu.get_input("Enter Spotify playlist URL (or 'back' to return): ", "str")
+        url = Enhanced_Menu.get_input("Enter Spotify playlist URL (or 'back' to return)", "str")
         if url.lower() == 'back':
             return False
         self.history.add_input(url, "playlist")

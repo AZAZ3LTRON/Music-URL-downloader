@@ -216,7 +216,7 @@ def main():
             Enhanced_Menu.print_menu_item(4, "Download Artist")
             Enhanced_Menu.print_menu_item(5, "Search & Download a Song")
 
-            Enhanced_Menu.print_section("🔐 USER-SPECIFIC (requires authentication)")
+            Enhanced_Menu.print_section("🔐 USER-SPECIFIC (requires authentication) not working")
             Enhanced_Menu.print_menu_item(6, "Download User Playlist")
             Enhanced_Menu.print_menu_item(7, "Download User Liked Songs")
             Enhanced_Menu.print_menu_item(8, "Download User Saved Albums")

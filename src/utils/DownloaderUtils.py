@@ -2,7 +2,6 @@ import sys
 import subprocess
 import shutil
 import io
-from PIL import Image
 import requests
 from urllib.request import urlopen
 from colorama import init, Fore, Style
