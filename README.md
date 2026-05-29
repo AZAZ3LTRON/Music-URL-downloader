@@ -29,3 +29,6 @@ Music-URL-Downloader
     ├── .gitignore                   # Git ignore file
     ├── README.md                    # Project documentation
     └── requirements.txt           # Docker setup (optional)
+
+
+spotdl download https://open.spotify.com/playlist/5NnYY6OQlChd6vdolYftSv --format mp3 --bitrate 320k --output playlist_folder/"{artist} - {title}"

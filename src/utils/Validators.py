@@ -126,26 +126,7 @@ class Helpers:
             if re.match(pattern, url, re.IGNORECASE):
                 return True, typ
         return False, None
-    
-    @staticmethod
-    def extract_spotify_id(url: str):
-        """ Extract Spotify ID from URL """
-        patterns = [
-            r'spotify\.com/(track|album|playlist)/([A-Za-z0-9]+)',
-            r'spotify:(track|album|playlist):([A-Za-z0-9]+)'
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(2)
-        return None
-    
-    @staticmethod
-    def extract_spotify_playlist_id(url: str):
-        match = re.search(r'/playlist/([a-zA-Z0-9]+)', url)
-        return match.group(1) if match else None
-    
+        
     @staticmethod
     def get_spotify_playlist_items(url: str, log_manager) -> List[Dict]:
         """Fetch track list from a Spotify playlisr using spotdl."""
