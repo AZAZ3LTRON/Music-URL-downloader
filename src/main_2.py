@@ -11,7 +11,7 @@ from utils.EnhancedMenu import Enhanced_Menu
 from utils.Logs_Handler import Logs_Manager
 from utils.Validators import Helpers
 
-from core.SpotifyMusicDownloader import SpotifyMusicDownloader
+from test.TestDownloader import SpotifyMusicDownloader
 init(autoreset=True)
 
 def main():
@@ -28,11 +28,8 @@ def main():
     print(f"{Fore.YELLOW}{Style.BRIGHT}Spotify Music Downloader{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}Initializing...{Style.RESET_ALL}")
 
-    # Create required directories (the downloader also creates some of these)
-    # Define directories using pathlib
-    home = Path.home()
-    music_dir = home / "Music"
-    cookies_dir = Path("cookies")   # keep relative or make absolute? See note below.
+    music_dir = Path.home() / "Music" / "Spotify"
+    cookies_dir = Path("cookies") 
 
     # Ensure they exist
     music_dir.mkdir(parents=True, exist_ok=True)
@@ -43,6 +40,7 @@ def main():
 
     try:
         downloader = SpotifyMusicDownloader()
+        downloader.output_directory = music_dir
         Enhanced_Menu.print_status("Downloader initialized successfully", "success")
         time.sleep(1)
     except Exception as e:
@@ -64,8 +62,6 @@ def main():
                 ╚══════════════════════════════════════════════════════════════╝
                 {Style.RESET_ALL}""")
         try:
-            # The downloader does not have a separate config object,
-            # so we call save_config() directly.
             downloader.save_config()
             print(f"{Fore.GREEN}Settings saved.{Style.RESET_ALL}")
         except Exception as e:
@@ -180,10 +176,9 @@ def main():
         5: lambda: downloader.search_and_download(),
         
         # Dont make use of 7,8,9 as functions are problematic        
-        6: lambda: downloader.download_user_playlist(),
-        7: lambda: downloader.download_user_liked_songs(),
-        8: lambda: downloader.download_user_saved_albums(),
-        9: lambda: downloader.manage_cookies(),
+        6: lambda: Enhanced_Menu.print_status("User authentication not available yet", "warning"),
+        7: lambda: Enhanced_Menu.print_status("User authentication not available yet", "warning"),
+        8: lambda: Enhanced_Menu.print_status("User authentication not available yet", "warning"),        9: lambda: downloader.manage_cookies(),
         10: lambda: downloader.check_dependencies(),
         11: lambda: downloader.check_spotdl(),          # class method, not .utils
         12: lambda: handle_settings(),

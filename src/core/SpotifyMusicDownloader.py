@@ -36,10 +36,13 @@ import time
 import hashlib
 import threading
 import json
+from dotenv import load_dotenv
+load_dotenv()
 
 from functools import wraps
 from pathlib import Path
 from urllib.parse import urlparse
+
 from typing import Dict, List, Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
@@ -52,6 +55,12 @@ from utils.Logs_Handler import Logs_Manager
 from utils.DownloadHistory import DownloadHistory
 from utils.Validators import Helpers 
 
+from spotdl import Spotdl
+from spotdl.types.song import Song
+from spotdl.utils.config import get_spotdl_path
+from spotdl.download.progress_handler import ProgressHandler
+
+
 init(autoreset=True)
 os.makedirs("cookies", exist_ok=True)
 
@@ -59,7 +68,7 @@ class SpotifyMusicDownloader:
     """Downloader class"""
     def __init__(self):
         """Initialize the downloader with default values"""
-        self.__output_directory = Path.home() / "Music" / "SpotifyDownloads"
+        self.__output_directory = Path.home() / "Music" / "Spotify"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.__configuration_file = r"config/SpotifyMusicDownloader.json"
@@ -128,7 +137,7 @@ class SpotifyMusicDownloader:
     def load_config(self):
         """Load configuration from json file"""
         primary_config = {
-            "output_directory": Path.home() / "Music" / "SpotifyDownloads",
+            "output_directory": Path.home() / "Music" / "Spotify",
             "audio_quality": "320k",
             "audio_format": "mp3",
             "max_retries": 3,
@@ -232,11 +241,11 @@ class SpotifyMusicDownloader:
                 Enhanced_Menu.print_status("Invalid format. Downloader doesn't support this format", "error")
 
             # Output directory
-            output_path = Enhanced_Menu.get_input(f"Enter output directory (default: {self.__output_directory}): ", "str").strip()
+            output_path = Enhanced_Menu.get_input(f"Enter output directory (default: {self.__output_directory})", "str").strip()
             if output_path:
                 self.__output_directory = Path(output_path)
             else:
-                self.__output_directory = Path.home() / "Music" / "SpotifyDownloads"
+                self.__output_directory = Path.home() / "Music" / "Spotify"
             self.__output_directory.mkdir(parents=True, exist_ok=True)
 
             # Cookie choice
@@ -278,10 +287,91 @@ class SpotifyMusicDownloader:
         return decorator
     
     @rate_limit(calls_per_minute=60)
-    def run_download(self, url: str, output_template: str = None, extra_args: List[str] = None, total_items: int = None, item_desc: str = "item") -> bool:
+    def run_download(self, url: str, output_template: str = None, extra_args: List[str] = None,
+                    total_items: int = None, item_desc: str = "item") -> bool:
         """
-        DEBUG version: streams spotdl output directly to console, no progress bar.
-        Revert to the original after debugging.
+        Downloads using spotdl's Python API with its native ProgressHandler.
+        Falls back to subprocess if the API call fails.
+        """
+        try:
+            # Build spotdl settings mirroring the CLI flags we used before
+            settings = {
+                "format":    self.audio_format,
+                "bitrate":   self.audio_quality,
+                "output":    output_template,
+                "overwrite": "skip",
+                "log_level": "ERROR",   # suppress spotdl's own logging noise
+            }
+            if extra_args:
+                # Parse any extra args (e.g. --save-file path) into the settings dict
+                it = iter(extra_args)
+                for arg in it:
+                    if arg.startswith("--"):
+                        key = arg.lstrip("-").replace("-", "_")
+                        try:
+                            settings[key] = next(it)
+                        except StopIteration:
+                            settings[key] = True
+
+            # ProgressHandler with simple_tui=False uses Rich's built-in bar
+            progress_handler = ProgressHandler(simple_tui=False)
+
+            spotdl_client = Spotdl(
+                client_id=os.getenv("SPOTIPY_CLIENT_ID"),
+                client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
+                settings=settings,
+            )
+
+            # Resolve URL to Song objects (handles tracks, albums, playlists, artists)
+            songs = spotdl_client.search([url])
+
+            if not songs:
+                self.log_manager.log_failure(f"No songs found for: {url}")
+                return False
+
+            progress_handler.set_songs(songs)
+
+            success_count = 0
+            for song in songs:
+                tracker = progress_handler.get_new_tracker(song)
+                try:
+                    _, path = spotdl_client.downloader.search_and_download(song, tracker)
+                    if path:
+                        tracker.notify_complete()
+                        success_count += 1
+                    else:
+                        tracker.notify_error(
+                            f"No path returned for {song.display_name}",
+                            Exception("Download returned no path")
+                        )
+                except Exception as e:
+                    tracker.notify_error(str(e), e)
+                    self.log_manager.log_error(f"Failed to download {song.display_name}: {e}")
+
+            progress_handler.close()
+
+            if success_count == len(songs):
+                self.log_manager.log_success(f"Downloaded {item_desc}: {url}")
+                return True
+            elif success_count > 0:
+                self.log_manager.log_success(f"Downloaded {success_count}/{len(songs)} songs")
+                return True
+            else:
+                self.log_manager.log_failure(f"All downloads failed for: {url}")
+                return False
+
+        except ImportError as e:
+            self.log_manager.log_error(f"spotdl API unavailable ({e}), falling back to subprocess")
+            return self._run_download_subprocess(url, output_template, extra_args, item_desc)
+        except Exception as e:
+            self.log_manager.log_error(f"spotdl API error ({e}), falling back to subprocess")
+            return self._run_download_subprocess(url, output_template, extra_args, item_desc)
+
+    def _run_download_subprocess(self, url: str, output_template: str,
+                                extra_args: List[str] = None, item_desc: str = "item") -> bool:
+        """
+        Subprocess fallback with simulated tqdm progress bar.
+        Used when the spotdl Python API is unavailable.
         """
         cmd = [
             "spotdl", "download", url,
@@ -289,37 +379,131 @@ class SpotifyMusicDownloader:
             "--bitrate", self.audio_quality,
             "--output", output_template,
             "--overwrite", "skip",
-            "--print-errors"
+            "--print-errors",
         ]
         if extra_args:
             cmd.extend(extra_args)
 
+        STAGE_PROCESSING = re.compile(r'Processing query:',       re.IGNORECASE)
+        STAGE_DOWNLOADED = re.compile(r'Downloaded\s+"(.+?)"',    re.IGNORECASE)
+        STAGE_CONVERTING = re.compile(r'Converting',              re.IGNORECASE)
+        STAGE_CONV_PCT   = re.compile(r'(\d+)%\s+([\d:]+)')
+        STAGE_SUCCESS    = re.compile(r'Successfully downloaded', re.IGNORECASE)
+        STAGE_FAILED     = re.compile(r'(Failed|Error|Unable)',   re.IGNORECASE)
+
+        bar_format = (
+            "{desc} |{bar}| "
+            f"{Fore.GREEN}{{percentage:3.0f}}%{Style.RESET_ALL} "
+            "[{elapsed}<{remaining}]"
+        )
+        pbar = tqdm(
+            total=100,
+            desc=f"  {item_desc[:30]:<30}",
+            bar_format=bar_format,
+            colour="magenta",
+            ncols=100,
+            leave=True,
+        )
+
+        state = {"current": 0, "soft_ceil": 20, "hard_target": None, "done": False}
+        lock  = threading.Lock()
+
+        def simulator():
+            while True:
+                time.sleep(0.15)
+                with lock:
+                    if state["done"]:
+                        break
+                    if state["hard_target"] is not None:
+                        target = state["hard_target"]
+                        if target > state["current"]:
+                            pbar.update(target - state["current"])
+                            state["current"] = target
+                        state["hard_target"] = None
+                        continue
+                    ceil = state["soft_ceil"]
+                    cur  = state["current"]
+                    if cur < ceil:
+                        increment = max(0.3, (ceil - cur) * 0.04)
+                        new_val   = min(cur + increment, ceil)
+                        pbar.update(new_val - cur)
+                        state["current"] = new_val
+
+        def snap_to(target: int, new_desc: str = None, new_ceil: int = None):
+            with lock:
+                if target > state["current"]:
+                    state["hard_target"] = target
+                if new_ceil is not None:
+                    state["soft_ceil"] = new_ceil
+            if new_desc:
+                pbar.set_description(f"  {new_desc[:30]:<30}")
+
+        sim_thread = threading.Thread(target=simulator, daemon=True)
+        sim_thread.start()
+
+        success = False
         try:
-            result = subprocess.run(
+            process = subprocess.Popen(
                 cmd,
-                stdout=sys.stdout,           
-                stderr=subprocess.PIPE,           
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
                 universal_newlines=True,
-                timeout=self.download_timeout
             )
-            
-            if result.returncode == 0:
-                self.log_manager.log_success(f"Downloaded {item_desc}: {url}")
-                return True
-            else:
-                self.log_manager.log_failure(f"spotdl failed for {url}")
-                self.log_manager.log_error(f"spotdl exited with code {result.returncode}")
-                return False
+
+            for line in process.stdout:
+                line = line.rstrip()
+                if not line:
+                    continue
+                if STAGE_PROCESSING.search(line):
+                    snap_to(25, new_desc="Searching...", new_ceil=48)
+                elif STAGE_DOWNLOADED.search(line):
+                    match = re.search(r'Downloaded\s+"([^"]+)', line)
+                    track_name = match.group(1) if match else item_desc
+                    snap_to(50, new_desc=track_name, new_ceil=68)
+                elif STAGE_CONVERTING.search(line):
+                    snap_to(70, new_desc="Converting...", new_ceil=94)
+                    pct_match = STAGE_CONV_PCT.search(line)
+                    if pct_match:
+                        mapped = 70 + int(int(pct_match.group(1)) * 0.24)
+                        snap_to(mapped)
+                elif STAGE_SUCCESS.search(line):
+                    snap_to(100, new_desc="Done ✓")
+                    success = True
+                elif STAGE_FAILED.search(line):
+                    with lock:
+                        state["done"] = True
+                    pbar.set_description(f"  {Fore.RED}{'Failed':<30}{Style.RESET_ALL}")
+                    pbar.colour = "red"
+
+            process.wait()
+            if process.returncode == 0:
+                success = True
+                snap_to(100, new_desc="Done ✓")
 
         except subprocess.TimeoutExpired:
+            process.kill()
             self.log_manager.log_error(f"Download timed out after {self.download_timeout}s: {url}")
-            return False
         except Exception as e:
             self.log_manager.log_error(f"Download process exception: {e}")
-            return False 
-            
+        finally:
+            with lock:
+                state["done"] = True
+            sim_thread.join(timeout=1)
+            if success:
+                with lock:
+                    if state["current"] < 100:
+                        pbar.update(100 - state["current"])
+            pbar.close()
+
+        if success:
+            self.log_manager.log_success(f"Downloaded {item_desc}: {url}")
+            return True
+        else:
+            self.log_manager.log_failure(f"spotdl failed for {url}")
+            return False    
+   
     def _download_with_retry(self, url: str, output_template: str, extra_args: list = None,
                             item_type: str = "item", total_items: int = None) -> bool:
         """Unified retry logic for downloads"""
@@ -885,7 +1069,7 @@ class SpotifyMusicDownloader:
 
     def reset_to_defaults(self):
         """Reset all settings to default values"""
-        self.__output_directory = Path.home() / "Music" / "SpotifyDownloads"
+        self.__output_directory = Path.home() / "Music" / "Spotify"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.use_cookies = False
