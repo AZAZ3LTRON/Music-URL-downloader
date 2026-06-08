@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 from dotenv import load_dotenv
@@ -74,15 +73,8 @@ def main():
         print(f"\n{Fore.CYAN}Goodbye!{Style.RESET_ALL}\n")
         sys.exit(0)
 
-    # ------------------------------------------------------------------
-    # WORKAROUND: Because the downloader class stores settings in private
-    # attributes (name‑mangled as _SpotifyMusicDownloader__...), we will
-    # access them directly for now.  **Better**: add @property decorators
-    # to the class (see recommendation at end of file).
-    # ------------------------------------------------------------------
     def get_current_settings():
         """Return current settings from the downloader’s private attributes."""
-        # Name mangling pattern: _ClassName__attribute
         return {
             'format': downloader._SpotifyMusicDownloader__audio_format,
             'quality': downloader._SpotifyMusicDownloader__audio_quality,
@@ -204,10 +196,7 @@ def main():
 
     while True:
         try:
-            Enhanced_Menu.clear_screen()
             Enhanced_Menu.print_header("Main Menu", "Select an option below:")
-
-            # Current settings display
             current = get_current_settings()
 
             Enhanced_Menu.print_section("📥 DOWNLOAD OPTIONS")

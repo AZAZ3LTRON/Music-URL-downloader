@@ -278,8 +278,7 @@ class SpotifyMusicDownloader:
         return decorator
     
     @rate_limit(calls_per_minute=60)
-    def run_download(self, url: str, output_template: str = None, extra_args: List[str] = None,
-                    total_items: int = None, item_desc: str = "item") -> bool:
+    def run_download(self, url: str, output_template: str = None, extra_args: List[str] = None, total_items: int = None, item_desc: str = "item") -> bool:
         """
         DEBUG version: streams spotdl output directly to console, no progress bar.
         Revert to the original after debugging.
@@ -321,7 +320,6 @@ class SpotifyMusicDownloader:
             self.log_manager.log_error(f"Download process exception: {e}")
             return False 
             
-    @rate_limit(calls_per_minute=60)
     def _download_with_retry(self, url: str, output_template: str, extra_args: list = None,
                             item_type: str = "item", total_items: int = None) -> bool:
         """Unified retry logic for downloads"""
@@ -385,7 +383,6 @@ class SpotifyMusicDownloader:
 
         return results
       
-    @rate_limit(calls_per_minute=60)
     def _download_playlist_direct(self, url: str) -> bool:
         """Download a Spotify playlist, falling back to direct URL if metadata is unavailable."""
         Enhanced_Menu.clear_screen()
@@ -589,7 +586,6 @@ class SpotifyMusicDownloader:
                 else:
                     return False
 
-    @rate_limit(calls_per_minute=60)
     def download_track(self):
         """Download a single track"""
         return self._download_item(
@@ -599,7 +595,6 @@ class SpotifyMusicDownloader:
             confirm_large=False
         )
         
-    @rate_limit(calls_per_minute=60)
     def download_album(self):
         """Download an album"""
         return self._download_item(
@@ -610,7 +605,6 @@ class SpotifyMusicDownloader:
             use_archive=True
         )
 
-    @rate_limit(calls_per_minute=60)
     def download_playlist(self):
         """Download a playlist (original method)"""
         Enhanced_Menu.clear_screen()
@@ -621,7 +615,6 @@ class SpotifyMusicDownloader:
         self.history.add_input(url, "playlist")
         return self._download_playlist_direct(url)
      
-    @rate_limit(calls_per_minute=60)
     def search_and_download(self):
         """Search for a song by name and download."""
         Enhanced_Menu.clear_screen()
@@ -655,7 +648,6 @@ class SpotifyMusicDownloader:
             return False
     
     # Don't use method as issues with spotdl are yet to be resolved
-    @rate_limit(calls_per_minute=60)
     def download_artist(self):
         """Download an artist"""
         return self._download_item(
