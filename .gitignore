@@ -2,3 +2,6 @@ Music
 __pycache__
 archives
 cookies
+.env
+logs
+download_history.log

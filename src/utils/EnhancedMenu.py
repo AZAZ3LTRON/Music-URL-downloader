@@ -97,7 +97,7 @@ class Enhanced_Menu:
         return lines
 
     @staticmethod
-    def print_status(message, status_type="info", icon=""):
+    def print_status(message: str, status_type: str = "info", icon="", pause_on_error: bool = True):
         """Print a status message with appropriate color and icon"""
         status_config = {
             "success": {"color": "success", "default_icon": "✓"},
@@ -109,6 +109,9 @@ class Enhanced_Menu:
         config = status_config.get(status_type, status_config["info"])
         icon_to_use = icon or config["default_icon"]
         print(f"{Enhanced_Menu.COLORS[config['color']]}{icon_to_use} {message}{Style.RESET_ALL}")
+
+        if status_type == "error" and pause_on_error:
+            input(f"{Fore.YELLOW}  Press Enter to continue...{Style.RESET_ALL}")
 
     @staticmethod
     def get_input(prompt, input_type="int", min_val=None, max_val=None, default=None):

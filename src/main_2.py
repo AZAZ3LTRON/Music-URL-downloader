@@ -1,6 +1,8 @@
 import os
 import sys
 import time
+from dotenv import load_dotenv
+load_dotenv()
 from pathlib import Path
 from colorama import init, Fore, Style
 
@@ -11,7 +13,6 @@ from utils.Logs_Handler import Logs_Manager
 from utils.Validators import Helpers
 
 from core.SpotifyMusicDownloader import SpotifyMusicDownloader
-
 init(autoreset=True)
 
 def main():
