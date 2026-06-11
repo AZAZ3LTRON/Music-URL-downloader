@@ -5,11 +5,9 @@ load_dotenv()
 from pathlib import Path
 from colorama import init, Fore, Style
 
-from utils.CookieManager import CookieManager
-from utils.DownloaderUtils import DownloaderUtils 
+
 from utils.EnhancedMenu import Enhanced_Menu
-from utils.Logs_Handler import Logs_Manager
-from utils.Validators import Helpers
+
 
 from core.SpotifyMusicDownloader import SpotifyMusicDownloader
 init(autoreset=True)

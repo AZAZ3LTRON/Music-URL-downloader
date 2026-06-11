@@ -5,10 +5,9 @@ from dotenv import load_dotenv
 load_dotenv()
 from spotipy.oauth2 import SpotifyClientCredentials
 from spotdl.utils.spotify import SpotifyClient
-from spotdl.types.song import Song
-from spotdl.types.album import Album
+
 from spotdl.types.playlist import Playlist
-from spotdl.types.artist import Artist
+
 import json
 import subprocess
 from pathlib import Path
@@ -138,104 +137,88 @@ class Helpers:
         return False, None
     
     @staticmethod
-    def get_spotify_playlist_items(url: str) -> List[Dict]:
-        """Fetch track list from a Spotify playlist using spotdl internals."""
-        try:
-            SpotifyClient.init(
-                client_id=os.getenv("SPOTIPY_CLIENT_ID"),
-                client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
-            )
-        except Exception:
-            pass
-
-        playlist = Playlist.from_url(url)
-
-        items = []
-        for track in playlist.tracks:
-            items.append({
-                'title':  getattr(track, 'name', 'Unknown'),
-                'artist': getattr(track, 'artist', 'Unknown Artist'),
-                'url':    getattr(track, 'url', None),
-                'track':  track,  
-            })
-
-        return items
-    
-    @staticmethod
     def validate_resource_spotify(url: str, timeout: int = 30) -> Tuple[bool, str, Optional[Dict]]:
-        """Validate and fetch Spotify metadata via spotdl internals (no Premium required)."""
+            """Validate and fetch Spotify metadata via spotdl's Spotify client (no track enumeration)."""
 
-        TYPE_PATTERNS = {
-            'track':    r'spotify\.com/track/([A-Za-z0-9]+)',
-            'album':    r'spotify\.com/album/([A-Za-z0-9]+)',
-            'playlist': r'spotify\.com/playlist/([A-Za-z0-9]+)',
-            'artist':   r'spotify\.com/artist/([A-Za-z0-9]+)',
-        }
+            TYPE_PATTERNS = {
+                'track':    r'spotify\.com/track/([A-Za-z0-9]+)',
+                'album':    r'spotify\.com/album/([A-Za-z0-9]+)',
+                'playlist': r'spotify\.com/playlist/([A-Za-z0-9]+)',
+                'artist':   r'spotify\.com/artist/([A-Za-z0-9]+)',
+            }
 
-        resource_type = None
-        for rtype, pattern in TYPE_PATTERNS.items():
-            if re.search(pattern, url):
-                resource_type = rtype
-                break
+            resource_type = None
+            resource_id = None
+            for rtype, pattern in TYPE_PATTERNS.items():
+                m = re.search(pattern, url)
+                if m:
+                    resource_type = rtype
+                    resource_id = m.group(1)
+                    break
 
-        if not resource_type:
-            return False, "Invalid or unrecognised Spotify URL", {}
+            if not resource_type:
+                return False, "Invalid or unrecognised Spotify URL", {}
 
-        try:
-            # Initialise spotdl's Spotify client if not already done.
-            # Uses the same credentials spotdl uses internally for downloads.
             try:
-                SpotifyClient.init(
-                    client_id=os.getenv("SPOTIPY_CLIENT_ID"),
-                    client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
-                )
-            except Exception:
-                pass  # Already initialised — SpotifyClient is a singleton
+                try:
+                    SpotifyClient.init(
+                        client_id=os.getenv("SPOTIPY_CLIENT_ID"),
+                        client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
+                    )
+                except Exception:
+                    pass  # Already initialised — SpotifyClient is a singleton
 
-            if resource_type == 'track':
-                track = Song.from_url(url)
-                metadata = {
-                    'type':   'track',
-                    'title':  getattr(track, 'name', 'Unknown Track'),
-                    'artist': getattr(track, 'artist', None) or getattr(track, 'artists', ['Unknown Artist'])[0],
-                    'album':  getattr(track, 'album_name', None) or getattr(track, 'album', 'Unknown Album'),
-                }
-                message = f"Track: {metadata['artist']} – {metadata['title']}"
+                client = SpotifyClient()  # this is a spotipy.Spotify instance
 
-            elif resource_type == 'album':
-                album = Album.from_url(url)
-                metadata = {
-                    'type':           'album',
-                    'title':          album.name,
-                    'artist':         album.artist,
-                    'playlist_count': len(album.tracks),
-                }
-                message = f"Album: {metadata['artist']} – {metadata['title']} ({metadata['playlist_count']} tracks)"
+                if resource_type == 'track':
+                    data = client.track(resource_id)
+                    artists = data.get('artists') or []
+                    metadata = {
+                        'type':   'track',
+                        'title':  data.get('name', 'Unknown Track'),
+                        'artist': artists[0]['name'] if artists else 'Unknown Artist',
+                        'album':  data.get('album', {}).get('name', 'Unknown Album'),
+                    }
+                    message = f"Track: {metadata['artist']} – {metadata['title']}"
 
-            elif resource_type == 'playlist':
-                playlist = Playlist.from_url(url)
-                metadata = {
-                    'type':           'playlist',
-                    'title':          playlist.name,
-                    'playlist_count': len(playlist.tracks),
-                    'tracks':         playlist.tracks,
-                }
-                message = f"Playlist: {metadata['title']} ({metadata['playlist_count']} tracks)"
- 
-            elif resource_type == 'artist':
-                artist = Artist.from_url(url)
-                metadata = {
-                    'type':   'artist',
-                    'title':  artist.name,
-                    'artist': artist.name,
-                }
-                message = f"Artist: {metadata['artist']}"
+                elif resource_type == 'album':
+                    # album endpoint returns total_tracks directly — no track walk
+                    data = client.album(resource_id)
+                    artists = data.get('artists') or []
+                    metadata = {
+                        'type':           'album',
+                        'title':          data.get('name', 'Unknown Album'),
+                        'artist':         artists[0]['name'] if artists else 'Unknown Artist',
+                        'playlist_count': data.get('total_tracks', 0),
+                    }
+                    message = f"Album: {metadata['artist']} – {metadata['title']} ({metadata['playlist_count']} tracks)"
 
-            return True, message, metadata
+                elif resource_type == 'playlist':
+                    # fields filter => single request, returns tracks.total without items
+                    data = client.playlist(resource_id, fields="name,owner.display_name")
+                    count_data = client.playlist_items(resource_id, fields="total", limit=1)
+                    metadata = {
+                        'type':           'playlist',
+                        'title':          data.get('name', 'Unknown Playlist'),
+                        'artist':         (data.get('owner') or {}).get('display_name', 'Unknown'),
+                        'playlist_count': (count_data or {}).get('total', 0),
+                    }
+                    message = f"Playlist: {metadata['title']} ({metadata['playlist_count']} tracks)"
 
-        except Exception as e:
-            return False, f"spotdl metadata error: {e}", {}
-        
+                elif resource_type == 'artist':
+                    data = client.artist(resource_id)
+                    metadata = {
+                        'type':   'artist',
+                        'title':  data.get('name', 'Unknown Artist'),
+                        'artist': data.get('name', 'Unknown Artist'),
+                    }
+                    message = f"Artist: {metadata['artist']}"
+
+                return True, message, metadata
+
+            except Exception as e:
+                return False, f"spotdl metadata error: {e}", {}
+                    
     # ========================================= Other functions =========================================
     @staticmethod
     def cleanup_directory(output_directory: Path, log_manager) -> None:

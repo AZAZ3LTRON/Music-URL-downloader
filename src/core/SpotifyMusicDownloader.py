@@ -1,35 +1,4 @@
-"""
-Interactive Playlist/Album/Track Downloader using SpotDL
-
-With the rise of Artificial Intelligence and the music industry scraping artist work to run in LLMs, Spotify has been the biggest profit from this.
-From the support of ICE, promoting AI Artist on the platform without proper regulations, their exploitative subscriptions fees which they have increased once again,
-putting out Zionist Advertisement, underpaying artist and Daniel Ek's investment in German military AI company Helsing.
-
-I created this python script to allow you, the user, to download track, albums, personal playlist etc from the Spotify Website. Unfortunately, Spotify have blocked all API request from
-being made due to mass web scrape of their platform by Anna's Archive. If you wish to download from them, you can go to
-
-The program function is to allow you to download music from Spotify urls.
-
-Its features a:
-- Audio Format choice
-- Download Quality choice
-- Output Directory Choice
-- Metadata Support
-- Organizes albums by artist
-- Mass download support (from text file)
-- Log successful downloads
-- Log failed downloads
-- Log errors in between downloads
-- Retry downloads
-- Resource validation
-
-Please make sure you use a VPN in tandem with the program
-
-Enjoy!
-"""
-
 import re
-import sys
 import os
 import subprocess
 import time
@@ -39,8 +8,7 @@ import json
 
 from functools import wraps
 from pathlib import Path
-from urllib.parse import urlparse
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from colorama import init, Fore, Style
@@ -55,16 +23,35 @@ from utils.Validators import Helpers
 init(autoreset=True)
 os.makedirs("cookies", exist_ok=True)
 
+def rate_limit(calls_per_minute: int = 60):
+    def decorator(func):
+        last_called = [0.0]
+        call_lock = threading.Lock()
+        min_interval = 60.0 / calls_per_minute
+        
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            with call_lock:
+                now = time.monotonic()
+                wait = min_interval - (now - last_called[0])
+                last_called[0] = now + max(wait, 0)
+                if wait > 0:
+                    time.sleep(wait)
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
 class SpotifyMusicDownloader:
-    """Downloader class"""
+    _PERCENT_RE = re.compile(r'(\d{1,3}(?:\.\d+)?)\s*%')
+
     def __init__(self):
         """Initialize the downloader with default values"""
-        self.__output_directory = Path.home() / "Music" / "SpotifyDownloads"
+        self.__output_directory = Path.home() / "Music" / "Spotify"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.__configuration_file = r"config/SpotifyMusicDownloader.json"
         self.cookie_manager = CookieManager()
-        self.log_manager = Logs_Manager()          # must be thread‑safe now
+        self.log_manager = Logs_Manager()          
         self.utils = DownloaderUtils()
         self.history = DownloadHistory()
         self.use_cookies = False
@@ -72,6 +59,7 @@ class SpotifyMusicDownloader:
         self.max_retries = 3
         self.retry_delay = 10
         self.download_timeout = 120
+        self.max_concurrent = 3
                 
         self.archives_dir = Path("archives")
         self.archives_dir.mkdir(exist_ok=True)
@@ -122,16 +110,13 @@ class SpotifyMusicDownloader:
         self.__output_directory = Path(path)
         self.__output_directory.mkdir(parents=True, exist_ok=True)
         
-    # ==================== Configuration Managers ====================
-    
-    # Added history_method
     def _log_download(self, url, item_type, status, metadata=None, error=None):
         self.history.add_entry(url, item_type, status, metadata=metadata, error=error)
             
     def load_config(self):
         """Load configuration from json file"""
         primary_config = {
-            "output_directory": Path.home() / "Music" / "SpotifyDownloads",
+            "output_directory": str(Path.home() / "Music" / "Spotify"),
             "audio_quality": "320k",
             "audio_format": "mp3",
             "max_retries": 3,
@@ -157,6 +142,7 @@ class SpotifyMusicDownloader:
             self.max_retries = config.get("max_retries", 3)
             self.retry_delay = config.get("retry_delay", 10)
             self.download_timeout = config.get("download_timeout", 120)
+            self.max_concurrent = config.get("max_concurrent", 3)
 
         except Exception as e:
             self.log_manager.log_error(f"Error loading configuration: {e}")
@@ -177,14 +163,18 @@ class SpotifyMusicDownloader:
                     "max_retries": self.max_retries,
                     "retry_delay": self.retry_delay,
                     "download_timeout": self.download_timeout,
+                    "max_concurrent": self.max_concurrent,
                     "use_cookies": self.use_cookies,
                 }
+            else:
+                config = {**config}
+                if "output_directory" in config:
+                    config["output_directory"] = str(config["output_directory"])
             with open(self.__configuration_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
         except Exception as e:
             self.log_manager.log_error(f"Error saving configuration: {e}")
             
-    # ==================== User preferences (stays in main class) ====================
     def get_user_preferences(self):
             """Takes in user input for the download settings"""
             Enhanced_Menu.print_header("Download Settings", "Configure your music conversion preferences")
@@ -240,7 +230,7 @@ class SpotifyMusicDownloader:
             if output_path:
                 self.__output_directory = Path(output_path)
             else:
-                self.__output_directory = Path.home() / "Music" / "SpotifyDownloads"
+                self.__output_directory = Path.home() / "Music" / "Spotify"
             self.__output_directory.mkdir(parents=True, exist_ok=True)
 
             # Cookie choice
@@ -255,7 +245,9 @@ class SpotifyMusicDownloader:
                 Enhanced_Menu.print_status("Note: Make sure you have extracted the cookies beforehand, if make use of Cookie Manager to help you", "info")
             else:
                 self.use_cookies = False    
+                
     # ================================================== Core Download Functions ==================================================
+    @rate_limit(calls_per_minute=60)
     def run_download(self, url: str, output_template: str = None, extra_args: List[str] = None,
                     total_items: int = None, item_desc: str = "item") -> bool:
         """Run spotdl with a custom progress bar, showing errors immediately on failure."""
@@ -388,123 +380,12 @@ class SpotifyMusicDownloader:
                 if attempt == self.max_retries:
                     self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
         return False
-    
-    def _download_items_concurrently(self, tasks, max_workers=3, desc="Downloading"):
-        """
-        tasks: list of (url, output_template, additional_args, archive_path, task_id)
-        returns: dict {task_id: success_bool}
-        """
-        total = len(tasks)
-        results = {}
-        result_lock = threading.Lock()
-        archive_locks = {}
-        archive_locks_lock = threading.Lock()
-        pbar_lock = threading.Lock()
-
-        with tqdm(total=total, desc=desc, unit="items") as pbar:
-            def worker(url, tmpl, args, archive_path, task_id):
-                with archive_locks_lock:
-                    if archive_path not in archive_locks:
-                        archive_locks[archive_path] = threading.Lock()
-                    lock = archive_locks[archive_path]
-
-                with lock:
-                    # Acquiring the lock ensures that only one spotdl process
-                    # writes to this archive file at a time, preventing corruption.
-                    success = self._download_with_retry(url, tmpl, args, "item")
-
-                with result_lock:
-                    results[task_id] = success
-                with pbar_lock:
-                    pbar.update(1)
-                return success
-
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = []
-                for url, tmpl, args, archive_path, tid in tasks:
-                    futures.append(executor.submit(worker, url, tmpl, args, archive_path, tid))
-                for future in as_completed(futures):
-                    pass   # exceptions already handled inside _download_with_retry
-
-        return results
-        
-    def _download_playlist_direct(self, url: str) -> bool:
-        """Direct playlist download (reused by smart download)"""
-        # Validate resource
-        is_valid, message, metadata = Helpers.validate_spotify_url(url)
-        if not is_valid or metadata.get('type') != 'playlist':
-            Enhanced_Menu.print_status(f"Validation failed: {message}", "failure")
-            return False
-        
-        playlist_count = metadata.get('playlist_count', 0)
-        if playlist_count == 0:
-            Enhanced_Menu.print_status("No tracks found in playlist.", "warning")
-            return False
-        
-        playlist_title = metadata.get('title', 'Unknown Playlist')
-        Enhanced_Menu.print_status(f"Playlist: {playlist_title} ({playlist_count} tracks)", "success")
-        
-        if playlist_count > 50:
-            if not Enhanced_Menu.get_input(f"This playlist has {playlist_count} tracks. Continue? (y/n)", "yn", default=False):
-                Enhanced_Menu.print_status("Download cancelled.", "info")
-                return False
-        
-        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
-            self.get_user_preferences()
-        
-        items = Helpers.get_spotify_playlist_items(url, self.log_manager)
-        if not items:
-            Enhanced_Menu.print_status("Failed to retrieve playlist items.", "error")
-            return False
-        
-        order = Enhanced_Menu.get_input("Download order: (t)op-to-bottom or (b)ottom-to-top", "str", default="t")
-        if order.lower() == 'b':
-            items.reverse()
-        
-        playlist_id = re.search(r'playlist/([a-zA-Z0-9]+)', url)
-        if playlist_id:
-            archive_path = self.archives_dir / f"playlist_{playlist_id.group(1)}.spotdl"
-        else:
-            url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
-            archive_path = self.archives_dir / f"playlist_{url_hash}.spotdl"
-        
-        safe_title = Helpers.sanitize_filename(playlist_title)
-        playlist_folder = self.__output_directory / safe_title
-        playlist_folder.mkdir(parents=True, exist_ok=True)
-        output_template = str(playlist_folder / "{artist} - {title}.{output-ext}")
-        
-        tasks = []
-        for idx, item in enumerate(items):
-            search_term = f"{item['artist']} - {item['title']}"
-            task_id = f"{idx}_{hashlib.md5(search_term.encode()).hexdigest()[:8]}"
-            additional_args = ["--save-file", str(archive_path)]
-            tasks.append((search_term, output_template, additional_args, archive_path, task_id))
-        
-        if not tasks:
-            Enhanced_Menu.print_status("No tracks to download.", "warning")
-            return False
-        
-        Enhanced_Menu.print_status(f"Starting concurrent download of {len(tasks)} tracks (max 3 at a time)...", "info")
-        results = self._download_items_concurrently(tasks, max_workers=3, desc="Playlist Download")
-        
-        success_count = sum(1 for v in results.values() if v)
-        failed_count = len(results) - success_count
-        
-        print("\n" + "=" * 55)
-        Enhanced_Menu.print_header("Playlist Download Complete")
-        print(f"  {Fore.GREEN}Successfully downloaded: {success_count}{Style.RESET_ALL}")
-        if failed_count > 0:
-            print(f"  {Fore.RED}Failed: {failed_count}{Style.RESET_ALL}")
-        print("=" * 55)
-        
-        return failed_count == 0
 
     def _download_item(self, item_type: str, url_prompt: str, output_template: str,
                        confirm_large: bool = False, use_archive: bool = False,
                        force_url: str = None) -> bool:
         """Unified download function for tracks and albums (playlist handled separately)"""
         while True:
-            print("\n" + "=" * 55)
             Enhanced_Menu.clear_screen()
             Enhanced_Menu.print_header(f"Download {item_type.title()}")
             
@@ -546,7 +427,15 @@ class SpotifyMusicDownloader:
                 print(f"  {Fore.CYAN}Album:{Style.RESET_ALL} {album_title}")
                 print(f"  {Fore.CYAN}Artist:{Style.RESET_ALL} {album_artist}")
                 print(f"  {Fore.CYAN}Tracks:{Style.RESET_ALL} {track_count}")
-            
+            elif item_type == "playlist":
+                playlist_title = metadata.get('title', 'Unknown Playlist')
+                playlist_owner = metadata.get('artist', 'Unknown')
+                track_count = metadata.get('playlist_count', '?')
+                print(f"  {Fore.CYAN}Playlist:{Style.RESET_ALL} {playlist_title}")
+                if playlist_owner != 'Unknown':
+                    print(f"  {Fore.CYAN}Owner:{Style.RESET_ALL} {playlist_owner}")
+                print(f"  {Fore.CYAN}Tracks:{Style.RESET_ALL} {track_count}")
+                
             elif item_type == "artist":
                 artist = metadata.get('artist', 'Unknown Artist')
                 print(f"  {Fore.CYAN}Artist:{Style.RESET_ALL} {artist}")
@@ -598,7 +487,46 @@ class SpotifyMusicDownloader:
                     continue
                 else:
                     return False
+    
+    def _download_items_concurrently(self, tasks, max_workers=3, desc="Downloading"):
+        """
+        tasks: list of (url, output_template, additional_args, archive_path, task_id)
+        returns: dict {task_id: success_bool}
+        """
+        total = len(tasks)
+        results = {}
+        result_lock = threading.Lock()
+        archive_locks = {}
+        archive_locks_lock = threading.Lock()
+        pbar_lock = threading.Lock()
 
+        with tqdm(total=total, desc=desc, unit="items") as pbar:
+            def worker(url, tmpl, args, archive_path, task_id):
+                with archive_locks_lock:
+                    if archive_path not in archive_locks:
+                        archive_locks[archive_path] = threading.Lock()
+                    lock = archive_locks[archive_path]
+
+                with lock:
+                    # Acquiring the lock ensures that only one spotdl process
+                    # writes to this archive file at a time, preventing corruption.
+                    success = self._download_with_retry(url, tmpl, args, "item")
+
+                with result_lock:
+                    results[task_id] = success
+                with pbar_lock:
+                    pbar.update(1)
+                return success
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = []
+                for url, tmpl, args, archive_path, tid in tasks:
+                    futures.append(executor.submit(worker, url, tmpl, args, archive_path, tid))
+                for future in as_completed(futures):
+                    pass   # exceptions already handled inside _download_with_retry
+
+        return results
+         
     # ================================================== Download Functions ==================================================
     def download_track(self):
         """Download a single track"""
@@ -618,16 +546,27 @@ class SpotifyMusicDownloader:
             confirm_large=True,
             use_archive=True
         )
-
+        
     def download_playlist(self):
-        """Download a playlist (original method)"""
-        Enhanced_Menu.clear_screen()
-        Enhanced_Menu.print_header("Download Playlist")
-        url = Enhanced_Menu.get_input("Enter Spotify playlist URL (or 'back' to return): ", "str")
-        if url.lower() == 'back':
-            return False
-        self.history.add_input(url, "playlist")
-        return self._download_playlist_direct(url)
+        """Download a playlist"""
+        return self._download_item(
+            item_type ="playlist",
+            url_prompt="playlist URL",
+            output_template=str(self.__output_directory/"{list-name}"/"{artist} - {title}.{output-ext}"),
+            confirm_large=True,
+            use_archive=True
+        )
+
+    # Don't use method as issues with spotdl are yet to be resolved
+    def download_artist(self):
+        """Download an artist"""
+        return self._download_item(
+            item_type="artist",
+            url_prompt="artist URL",
+            output_template=str(self.__output_directory / "{artist}.{output-ext}"),
+            confirm_large=True,
+            use_archive=True
+        )
              
     def search_and_download(self):
         """Search for a song by name and download."""
@@ -661,16 +600,7 @@ class SpotifyMusicDownloader:
             self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: '{song_query}'")
             return False
     
-    # Don't use method as issues with spotdl are yet to be resolved
-    def download_artist(self):
-        """Download an artist"""
-        return self._download_item(
-            item_type="artist",
-            url_prompt="artist URL",
-            output_template=str(self.__output_directory / "{artist}.{output-ext}"),
-            confirm_large=True,
-            use_archive=True
-        )
+
     
     #  ================================= Problem with functions as spotdl login features has been disabled, till better one is writing  =================================
     
@@ -851,7 +781,7 @@ class SpotifyMusicDownloader:
         return self.utils.check_ffmpeg()
 
     def show_spotdl_help(self):
-        return self.utils.show_spotdl_help
+        return self.utils.show_spotdl_help()
 
     def check_dependencies(self):
         return self.utils.check_dependencies()
@@ -900,7 +830,7 @@ class SpotifyMusicDownloader:
 
     def reset_to_defaults(self):
         """Reset all settings to default values"""
-        self.__output_directory = Path.home() / "Music" / "SpotifyDownloads"
+        self.__output_directory = Path.home() / "Music" / "Spotify"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.use_cookies = False
