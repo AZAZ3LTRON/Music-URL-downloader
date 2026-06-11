@@ -11,7 +11,7 @@ from utils.EnhancedMenu import Enhanced_Menu
 from utils.Logs_Handler import Logs_Manager
 from utils.Validators import Helpers
 
-from test.TestDownloader import SpotifyMusicDownloader
+from core.SpotifyMusicDownloader import SpotifyMusicDownloader
 init(autoreset=True)
 
 def main():

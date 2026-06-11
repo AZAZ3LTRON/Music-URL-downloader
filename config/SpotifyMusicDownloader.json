@@ -1,5 +1,5 @@
 {
-  "output_directory": "Music\\Spotify",
+  "output_directory": "C:\\Users\\Ayomide Ajimuda\\Music\\Spotify",
   "audio_quality": "320k",
   "audio_format": "flac",
   "max_retries": 3,

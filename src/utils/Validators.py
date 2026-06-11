@@ -136,22 +136,30 @@ class Helpers:
             if re.match(pattern, url, re.IGNORECASE):
                 return True, typ
         return False, None
-        
+    
     @staticmethod
-    def get_spotify_playlist_items(url: str, log_manager) -> List[Dict]:
-        """Fetch track list from a Spotify playlisr using spotdl."""
-        command = ["spotdl", "--playlist", url, "--save-file", "-", "--format", "json"]
+    def get_spotify_playlist_items(url: str) -> List[Dict]:
+        """Fetch track list from a Spotify playlist using spotdl internals."""
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=True)
-            # spotdl outputs JSON lines - parse accordingly
-            items = []
-            for line in result.stdou.strip().split('\n'):
-                if line:
-                    items.append(json.loads(line))
-            return items
-        except Exception as e:
-            log_manager.log_error(f"Spotify playlist error: {e}")
-            return []
+            SpotifyClient.init(
+                client_id=os.getenv("SPOTIPY_CLIENT_ID"),
+                client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
+            )
+        except Exception:
+            pass
+
+        playlist = Playlist.from_url(url)
+
+        items = []
+        for track in playlist.tracks:
+            items.append({
+                'title':  getattr(track, 'name', 'Unknown'),
+                'artist': getattr(track, 'artist', 'Unknown Artist'),
+                'url':    getattr(track, 'url', None),
+                'track':  track,  
+            })
+
+        return items
     
     @staticmethod
     def validate_resource_spotify(url: str, timeout: int = 30) -> Tuple[bool, str, Optional[Dict]]:
@@ -210,9 +218,10 @@ class Helpers:
                     'type':           'playlist',
                     'title':          playlist.name,
                     'playlist_count': len(playlist.tracks),
+                    'tracks':         playlist.tracks,
                 }
                 message = f"Playlist: {metadata['title']} ({metadata['playlist_count']} tracks)"
-
+ 
             elif resource_type == 'artist':
                 artist = Artist.from_url(url)
                 metadata = {
@@ -226,6 +235,7 @@ class Helpers:
 
         except Exception as e:
             return False, f"spotdl metadata error: {e}", {}
+        
     # ========================================= Other functions =========================================
     @staticmethod
     def cleanup_directory(output_directory: Path, log_manager) -> None:
