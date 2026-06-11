@@ -226,7 +226,7 @@ class SpotifyMusicDownloader:
                 Enhanced_Menu.print_status("Invalid format. Downloader doesn't support this format", "error")
 
             # Output directory
-            output_path = Enhanced_Menu.get_input(f"Enter output directory (default{self.__output_directory}): ", "str").strip()
+            output_path = Enhanced_Menu.get_input(f"Enter output directory (default {self.__output_directory})", "str").strip()
             if output_path:
                 self.__output_directory = Path(output_path)
             else:
@@ -249,137 +249,119 @@ class SpotifyMusicDownloader:
     # ================================================== Core Download Functions ==================================================
     @rate_limit(calls_per_minute=60)
     def run_download(self, url: str, output_template: str = None, extra_args: List[str] = None,
-                    total_items: int = None, item_desc: str = "item") -> bool:
-        """Run spotdl with a custom progress bar, showing errors immediately on failure."""
+                    total_items: int = None, item_desc: str = "item", desc: str = None) -> bool:
+        """Run spotdl with a live bar that advances per finished track."""
         cmd = [
             "spotdl", "download", url,
             "--format", self.audio_format,
             "--bitrate", self.audio_quality,
             "--output", output_template,
             "--overwrite", "skip",
-            "--print-errors"
+            "--print-errors",
         ]
         if extra_args:
             cmd.extend(extra_args)
 
-        # Setup progress bar
+        # These are what spotdl v4 actually prints per track:
+        DONE_MARKERS = ('Downloaded "', 'Skipping ', 'Finished downloading', 'Saved', 'Download completed')
+        FAIL_MARKERS = ('No results found', 'LookupError', 'AudioProviderError',
+                        'Error downloading', 'Failed to download')
+
+        label = desc or f"Downloading {item_desc}s"
+        if len(label) > 40:
+            label = label[:37] + "..."
+
         if total_items:
-            pbar = tqdm(total=total_items, desc=f"Downloading {item_desc}s", unit=item_desc,
+            pbar = tqdm(total=total_items, desc=label, unit=item_desc, colour="green",
                         bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]")
         else:
-            pbar = tqdm(desc="Downloading", unit=" steps", total=None,
-                        bar_format="{l_bar}{bar}| {n_fmt} steps [{elapsed}]")
+            pbar = tqdm(desc=label, unit="track", total=None, colour="green",
+                        bar_format="{l_bar}{bar}| {n_fmt} [{elapsed}]")
 
-        # We'll store all output lines to inspect on failure
         output_lines = []
-
         try:
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                     text=True, bufsize=1, universal_newlines=True)
-
             completed = 0
-            last_percent = 0
 
             for line in iter(process.stdout.readline, ''):
                 line = line.strip()
                 if not line:
                     continue
 
-                # Keep the line for potential error display
                 output_lines.append(line)
-                # Limit memory – keep only last 1000 lines (adjust as needed)
                 if len(output_lines) > 1000:
-                    output_lines = output_lines[-200:]   # keep recent 200
+                    output_lines = output_lines[-200:]
 
-                # --- Completion signals ---
-                if any(phrase in line for phrase in ["Finished downloading", "Saved", "Download completed"]):
+                # Advance once per finished track (success, skip, or failure)
+                if any(m in line for m in DONE_MARKERS) or any(m in line for m in FAIL_MARKERS):
                     completed += 1
+                    pbar.update(1)
                     if total_items:
-                        pbar.update(1)
-                        pbar.set_description(f"Completed {completed}/{total_items}")
-                    else:
-                        pbar.update(1)
-                        pbar.set_description(f"Processed {completed} items" if completed > 0 else "Processing")
-                    last_percent = 0
+                        pbar.set_postfix_str(f"{completed}/{total_items}")
+                    continue
 
-                # --- Percentage from yt-dlp (if present) ---
-                percent_match = re.search(r'(\d+\.?\d*)%', line)
-                if percent_match:
-                    percent = float(percent_match.group(1))
-                    if total_items is None or total_items == 1:
-                        pbar.n = percent / 100.0
-                        pbar.set_description(f"Downloading {percent:.1f}%")
-                        pbar.refresh()
-
-                # --- Speed / ETA (only for single item) ---
-                speed_match = re.search(r'at\s+([\d\.]+\s*[KMGT]?i?B/s)', line)
-                if speed_match and (total_items is None or total_items == 1):
-                    pbar.set_postfix_str(f"Speed: {speed_match.group(1)}")
-                eta_match = re.search(r'ETA\s+([\d:]+)', line)
-                if eta_match and (total_items is None or total_items == 1):
-                    pbar.set_postfix_str(f"ETA: {eta_match.group(1)}")
+                # Single-item live detail only (never for playlist/album bars)
+                if total_items is None or total_items == 1:
+                    pm = re.search(r'(\d+\.?\d*)%', line)
+                    if pm:
+                        pbar.set_postfix_str(f"{float(pm.group(1)):.1f}%")
+                    sm = re.search(r'at\s+([\d.]+\s*[KMGT]?i?B/s)', line)
+                    if sm:
+                        pbar.set_postfix_str(sm.group(1))
 
             process.wait()
+            
+            if total_items:
+                if pbar.n < total_items:
+                    pbar.update(total_items - pbar.n)
+                else:
+                    pbar.total = pbar.n or completed
+                    pbar.refresh()
             pbar.close()
 
             if process.returncode == 0:
-                if total_items:
-                    self.log_manager.log_success(f"Downloaded {completed}/{total_items} {item_desc}s from {url}")
                 return True
-            else:
-                # Extract lines that look like errors (contain 'error', 'downloaderror', etc.)
-                error_keywords = ['error', 'fail', 'blocked', 'unavailable', 'private',
-                                'forbidden', 'not found', 'quota', 'rate limit']
-                error_lines = []
-                for line in output_lines:
-                    if any(keyword in line.lower() for keyword in error_keywords):
-                        error_lines.append(line)
 
-                # If no obvious error lines, show the last few lines
-                if not error_lines:
-                    error_lines = output_lines[-5:]
-
-                # Display the errors immediately to the console
-                print(f"\n{Fore.RED}===== spotdl error output ====={Style.RESET_ALL}")
-                for err_line in error_lines:
-                    print(f"{Fore.RED}{err_line}{Style.RESET_ALL}")
-                print(f"{Fore.RED}==============================={Style.RESET_ALL}\n")
-
-                # Log each error line to error.log (without console output, to avoid duplication)
-                for err_line in error_lines:
-                    self.log_manager.log_error(f"spotdl: {err_line}", console=False)
-
-                # Also log a summary failure
-                self.log_manager.log_failure(f"spotdl failed for {url}")
-                return False
+            error_keywords = ['error', 'fail', 'blocked', 'unavailable', 'private',
+                            'forbidden', 'not found', 'quota', 'rate limit']
+            error_lines = [l for l in output_lines if any(k in l.lower() for k in error_keywords)]
+            if not error_lines:
+                error_lines = output_lines[-5:]
+            print(f"\n{Fore.RED}===== spotdl error output ====={Style.RESET_ALL}")
+            for el in error_lines:
+                print(f"{Fore.RED}{el}{Style.RESET_ALL}")
+            print(f"{Fore.RED}==============================={Style.RESET_ALL}\n")
+            for el in error_lines:
+                self.log_manager.log_error(f"spotdl: {el}", console=False)
+            self.log_manager.log_failure(f"spotdl failed for {url}")
+            return False
 
         except Exception as e:
             self.log_manager.log_error(f"Download process exception: {e}", console=True)
             pbar.close()
             return False
-           
+                   
     def _download_with_retry(self, url: str, output_template: str, extra_args: list = None,
-                            item_type: str = "item", total_items: int = None) -> bool:
-        """Unified retry logic for downloads"""
-        for attempt in range(1, self.max_retries + 1):   # ← use instance attribute
-            Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{self.max_retries})")
-            if attempt > 1:
-                print(f"Waiting {self.retry_delay} seconds before retry...")
-                time.sleep(self.retry_delay)
-
-            try:
-                success = self.run_download(url, output_template, extra_args,
-                                            total_items=total_items, item_desc=item_type)
-                if success:
-                    self.log_manager.log_success(f"Successfully downloaded {item_type}: {url}")
-                    if item_type in ['album', 'playlist', 'artist']:
-                        Helpers.cleanup_directory(self.__output_directory, self.log_manager)
-                    return True
-            except Exception as e:
-                self.log_manager.log_error(f"Attempt {attempt} failed: {e}")
-                if attempt == self.max_retries:
-                    self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
-        return False
+                                item_type: str = "item", total_items: int = None, desc: str = None) -> bool:
+            for attempt in range(1, self.max_retries + 1):
+                Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{self.max_retries})")
+                if attempt > 1:
+                    print(f"Waiting {self.retry_delay} seconds before retry...")
+                    time.sleep(self.retry_delay)
+                try:
+                    success = self.run_download(url, output_template, extra_args,
+                                                total_items=total_items, item_desc=item_type, desc=desc)
+                    if success:
+                        self.log_manager.log_success(f"Successfully downloaded {item_type}: {url}")
+                        if item_type in ['album', 'playlist', 'artist']:
+                            Helpers.cleanup_directory(self.__output_directory, self.log_manager)
+                        return True
+                except Exception as e:
+                    self.log_manager.log_error(f"Attempt {attempt} failed: {e}")
+                    if attempt == self.max_retries:
+                        self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
+            return False
 
     def _download_item(self, item_type: str, url_prompt: str, output_template: str,
                        confirm_large: bool = False, use_archive: bool = False,
@@ -450,7 +432,7 @@ class SpotifyMusicDownloader:
                         return False
                     continue
                 
-            total = metadata.get('playlist_count', None) if item_type in ['album', 'playlist'] else None
+            total = metadata.get('playlist_count') or None if item_type in ['album', 'playlist'] else None
             if use_archive:
                 if 'album' in url:
                     album_id = re.search(r'album/([a-zA-Z0-9]+)', url)
@@ -469,8 +451,10 @@ class SpotifyMusicDownloader:
                 self.get_user_preferences()
             
             Enhanced_Menu.print_status(f"Starting {item_type} download...", "info")
-            success = self._download_with_retry(url, output_template, additional_args, item_type, total_items=total)
-            
+            display_name = metadata.get('title') or item_type.title()
+            success = self._download_with_retry(url, output_template, additional_args,
+                                                item_type, total_items=total, desc=display_name)
+                       
             if force_url:
                 return success
             
@@ -487,46 +471,7 @@ class SpotifyMusicDownloader:
                     continue
                 else:
                     return False
-    
-    def _download_items_concurrently(self, tasks, max_workers=3, desc="Downloading"):
-        """
-        tasks: list of (url, output_template, additional_args, archive_path, task_id)
-        returns: dict {task_id: success_bool}
-        """
-        total = len(tasks)
-        results = {}
-        result_lock = threading.Lock()
-        archive_locks = {}
-        archive_locks_lock = threading.Lock()
-        pbar_lock = threading.Lock()
-
-        with tqdm(total=total, desc=desc, unit="items") as pbar:
-            def worker(url, tmpl, args, archive_path, task_id):
-                with archive_locks_lock:
-                    if archive_path not in archive_locks:
-                        archive_locks[archive_path] = threading.Lock()
-                    lock = archive_locks[archive_path]
-
-                with lock:
-                    # Acquiring the lock ensures that only one spotdl process
-                    # writes to this archive file at a time, preventing corruption.
-                    success = self._download_with_retry(url, tmpl, args, "item")
-
-                with result_lock:
-                    results[task_id] = success
-                with pbar_lock:
-                    pbar.update(1)
-                return success
-
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = []
-                for url, tmpl, args, archive_path, tid in tasks:
-                    futures.append(executor.submit(worker, url, tmpl, args, archive_path, tid))
-                for future in as_completed(futures):
-                    pass   # exceptions already handled inside _download_with_retry
-
-        return results
-         
+             
     # ================================================== Download Functions ==================================================
     def download_track(self):
         """Download a single track"""

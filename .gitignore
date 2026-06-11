@@ -5,5 +5,4 @@ cookies
 .env
 logs
 download_history.log
-config
 SpotifyMusicDownloader.json
