@@ -54,8 +54,9 @@ class SpotifyMusicDownloader:
         self.log_manager = Logs_Manager()          
         self.utils = DownloaderUtils()
         self.history = DownloadHistory()
+        self.helpers = Helpers()
         self.use_cookies = False
-        self._last_download_stats = {"succeeded": 0, "skipped": 0, "failed": 0}
+        self._last_download_stats = {"succeeded": 0, "skipped": 0, "failed": 0, "failed_items": []}
 
         self.max_retries = 3
         self.retry_delay = 10
@@ -279,6 +280,7 @@ class SpotifyMusicDownloader:
                         bar_format="{l_bar}{bar}| {n_fmt} [{elapsed}]")
 
         output_lines = []
+        failed_items = []
         succeeded = skipped = failed = 0
         try:
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -301,6 +303,7 @@ class SpotifyMusicDownloader:
                 if is_success or is_skip or is_fail:
                     if is_fail:
                         failed += 1
+                        failed_items.append(line)
                     elif is_skip:
                         skipped += 1
                     else:
@@ -332,7 +335,7 @@ class SpotifyMusicDownloader:
             pbar.close()
             
             self._last_download_stats = {
-                "succeeded": succeeded, "skipped": skipped, "failed": failed
+                "succeeded": succeeded, "skipped": skipped, "failed": failed, "failed_items": failed_items,
             }
 
             if process.returncode == 0:
@@ -359,46 +362,6 @@ class SpotifyMusicDownloader:
             }
             pbar.close()
             return False
-          
-    @staticmethod
-    def _parse_failed_links(failed_path) -> List[Dict[str, str]]:
-        """Pull failed track URLs out of a spotdl --save-errors file."""
-        failures: List[Dict[str, str]] = []
-        if not failed_path or not Path(failed_path).exists():
-            return failures
-        url_re = re.compile(r'(https?://open\.spotify\.com/track/[A-Za-z0-9]+)')
-        seen = set()
-        try:
-            with open(failed_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    m = url_re.search(line)
-                    if m and m.group(1) not in seen:
-                        seen.add(m.group(1))
-                        failures.append({"url": m.group(1), "detail": line})
-        except OSError:
-            pass
-        return failures       
-           
-    @staticmethod
-    def _count_failed(failed_path) -> int:
-        """Count error entries in a spotdl --save-errors file (skips the timestamp header)."""
-        if not failed_path or not Path(failed_path).exists():
-            return 0
-        header_re = re.compile(r'^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$')
-        count = 0
-        try:
-            with open(failed_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or header_re.match(line):
-                        continue
-                    count += 1
-        except OSError:
-            return 0
-        return count
                
     def _download_with_retry(self, url: str, output_template: str, extra_args: list = None,
                                 item_type: str = "item", total_items: int = None, desc: str = None) -> bool:
@@ -506,7 +469,6 @@ class SpotifyMusicDownloader:
                     continue
                 
             total = metadata.get('playlist_count') or None if item_type in ['album', 'playlist'] else None
-            failed_path = None
             if use_archive:
                 url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
                 if 'album' in url:
@@ -515,12 +477,15 @@ class SpotifyMusicDownloader:
                         f"album_{album_id.group(1)}.spotdl" if album_id
                         else f"album_{url_hash}.spotdl"
                     )
+                if 'playlist' in url:
+                    playlist_id = re.search(r'playlist/([a-zA-Z0-9]+)', url)
+                    archive_path = self.archives_dir / (
+                        f"playlist_{playlist_id.group(1)}.spotdl" if playlist_id else f"playlist_{url_hash}.spotdl"
+                    )
                 else:
-                    archive_path = self.archives_dir / f"item_{url_hash}.spotdl"
+                    archive_path = self.archives_dir / f"track_{url_hash}.spotdl"
 
-                failed_path = self.archives_dir / f"failed_{hashlib.md5(url.encode()).hexdigest()[:8]}.log"
-                additional_args = ["--save-file", str(archive_path),
-                                "--save-errors", str(failed_path)]
+                additional_args = ["--save-file", str(archive_path)]
             else:
                 additional_args = None
                             
@@ -533,9 +498,10 @@ class SpotifyMusicDownloader:
                                                 item_type, total_items=total, desc=display_name)
                        
             if item_type == "playlist":
-                failed_links = self._parse_failed_links(failed_path)   # links to display
-                failed_count = self._count_failed(failed_path)         # authoritative failure count
-
+                stats = self._last_download_stats
+                failed_count = stats["failed"]
+                failed_items = stats["failed_items"]
+                
                 if total:
                     succeeded_count = max(total - failed_count, 0)     # not-failed == on disk
                 else:
@@ -548,25 +514,11 @@ class SpotifyMusicDownloader:
                 if total:
                     print(f"  {Fore.CYAN}Total tracks:{Style.RESET_ALL} {total}")
 
-                if failed_links:
-                    print(f"{Fore.RED}The following tracks failed to download: {Style.RESET_ALL}")
-                    for item in failed_links:
-                        print(f"    {item['url']}")
-                        self.log_manager.log_failure(f"Playlist track failed: {item['detail']}")
-                    
-                    try:
-                        with open(failed_path, "w", encoding="utf-8") as f:
-                            f.write("\n".join(i["url"] for i in failed_links) + "\n")
-                        Enhanced_Menu.print_status(f"Failed links saved to: {failed_path}", "info")
-                    except OSError as e:
-                        self.log_manager.log_error(f"Could not write failed-links file: {e}")
-                else:
-                    try:
-                        if failed_path and failed_path.exists():
-                            failed_path.unlink()
-                    except OSError:
-                        pass
-                                       
+                if failed_items:
+                    print(f"{Fore.RED} Some links failed to download: Check failed.log for more info {Style.RESET_ALL}")
+                    for detail in failed_items:
+                        self.log_manager.log_failure(f"{url} | {detail}", console=False)
+
             if force_url:
                 return success
             

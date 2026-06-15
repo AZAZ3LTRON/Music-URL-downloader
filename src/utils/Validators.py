@@ -16,6 +16,7 @@ import urllib.parse
 
 
 class Helpers:
+    """ A Class for all static methods used by the program"""
     # ========================================= Youtube Functions =========================================
     @staticmethod
     def validate_youtube_url(url: str) -> bool:
@@ -218,29 +219,7 @@ class Helpers:
 
             except Exception as e:
                 return False, f"spotdl metadata error: {e}", {}
-   
-    @staticmethod
-    def _parse_failed_links(errors_path) -> List[Dict[str, str]]:
-        """Pull failed track URLs out of a spotdl --save-errors file."""
-        failures: List[Dict[str, str]] = []
-        if not errors_path or not Path(errors_path).exists():
-            return failures
-        url_re = re.compile(r'(https?://open\.spotify\.com/track/[A-Za-z0-9]+)')
-        seen = set()
-        try:
-            with open(errors_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    m = url_re.search(line)
-                    if m and m.group(1) not in seen:
-                        seen.add(m.group(1))
-                        failures.append({"url": m.group(1), "detail": line})
-        except OSError:
-            pass
-        return failures
-                 
+             
     # ========================================= Other functions =========================================
     @staticmethod
     def cleanup_directory(output_directory: Path, log_manager) -> None:
