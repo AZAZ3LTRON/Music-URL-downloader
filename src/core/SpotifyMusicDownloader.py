@@ -23,6 +23,7 @@ from utils.Validators import Helpers
 init(autoreset=True)
 os.makedirs("cookies", exist_ok=True)
 
+
 def rate_limit(calls_per_minute: int = 60):
     def decorator(func):
         last_called = [0.0]
@@ -56,12 +57,14 @@ class SpotifyMusicDownloader:
         self.history = DownloadHistory()
         self.helpers = Helpers()
         self.use_cookies = False
-        self._last_download_stats = {"succeeded": 0, "skipped": 0, "failed": 0, "failed_items": []}
+        self._last_download_stats = {"succeeded": 0, "skipped": 0, "failed": 0, "failed_items": [], "rate_limited": False}
 
         self.max_retries = 3
         self.retry_delay = 10
         self.download_timeout = 120
         self.max_concurrent = 3
+        self.rate_limit_backoff = 300     # base wait (s) after a YouTube rate limit
+        self.rate_limit_max_wait = 1800 
                 
         self.archives_dir = Path("archives")
         self.archives_dir.mkdir(exist_ok=True)
@@ -249,9 +252,29 @@ class SpotifyMusicDownloader:
                 self.use_cookies = False    
                 
     # ================================================== Core Download Functions ==================================================
+    def _get_cookie_file(self):
+        """Return a usable cookie-file path if cookies are enabled, else None."""
+        if not self.use_cookies:
+            return None
+        # Prefer whatever the CookieManager is currently pointing at
+        path = getattr(self.cookie_manager, "current_cookie_file", None)
+        if path and os.path.exists(path):
+            return str(path)
+        # Otherwise fall back to the newest .txt in the cookies/ directory
+        cookies_dir = Path("cookies")
+        if cookies_dir.is_dir():
+            candidates = sorted(cookies_dir.glob("*.txt"),
+                                key=lambda p: p.stat().st_mtime, reverse=True)
+            if candidates:
+                return str(candidates[0])
+        self.log_manager.log_error(
+            "Cookies are enabled but no cookie file was found in cookies/. "
+            "Use the Cookie Manager to add one.", console=True)
+        return None
+                
     @rate_limit(calls_per_minute=60)
     def run_download(self, url: str, output_template: str = None, extra_args: List[str] = None,
-                    total_items: int = None, item_desc: str = "item", desc: str = None) -> bool:
+                        total_items: int = None, item_desc: str = "item", desc: str = None) -> bool:
         """Run spotdl with a live bar that advances per finished track."""
         cmd = [
             "spotdl", "download", url,
@@ -261,12 +284,19 @@ class SpotifyMusicDownloader:
             "--overwrite", "skip",
             "--print-errors",
         ]
+        cookie_file = self._get_cookie_file()
+        if cookie_file:
+            cmd.extend(["--cookie-file", cookie_file])
         if extra_args:
             cmd.extend(extra_args)
 
         # These are what spotdl v4 actually prints per track:
         FAIL_MARKERS = ('No results found', 'LookupError', 'AudioProviderError',
                         'Error downloading', 'Failed to download')
+        # Signals that the failures are YouTube/Spotify throttling, not missing songs:
+        RATE_LIMIT_MARKERS = ('rate-limited by YouTube', 'HTTP Error 403',
+                            'reached a rate/request limit', 'Max Retries reached',
+                            'Sign in to confirm')
 
         label = desc or f"Downloading {item_desc}s"
         if len(label) > 40:
@@ -282,9 +312,14 @@ class SpotifyMusicDownloader:
         output_lines = []
         failed_items = []
         succeeded = skipped = failed = 0
+        rate_limited = False
         try:
+            env = os.environ.copy()
+            env["PYTHONUTF8"] = "1"
+            env["PYTHONIOENCODING"] = "utf-8"
             process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    text=True, bufsize=1, universal_newlines=True)
+                                    text=True, encoding="utf-8", errors="replace",
+                                    bufsize=1, env=env)
             completed = 0
 
             for line in iter(process.stdout.readline, ''):
@@ -296,7 +331,10 @@ class SpotifyMusicDownloader:
                 if len(output_lines) > 1000:
                     output_lines = output_lines[-200:]
 
-                # Advance once per finished track (success, skip, or failures
+                if any(m in line for m in RATE_LIMIT_MARKERS):
+                    rate_limited = True
+
+                # Advance once per finished track (success, skip, or failure)
                 is_success = 'Downloaded "' in line
                 is_skip = 'Skipping ' in line
                 is_fail = any(m in line for m in FAIL_MARKERS)
@@ -325,7 +363,7 @@ class SpotifyMusicDownloader:
                         pbar.set_postfix_str(sm.group(1))
 
             process.wait()
-            
+
             if total_items:
                 if pbar.n < total_items:
                     pbar.update(total_items - pbar.n)
@@ -333,9 +371,10 @@ class SpotifyMusicDownloader:
                     pbar.total = pbar.n or completed
                     pbar.refresh()
             pbar.close()
-            
+
             self._last_download_stats = {
-                "succeeded": succeeded, "skipped": skipped, "failed": failed, "failed_items": failed_items,
+                "succeeded": succeeded, "skipped": skipped, "failed": failed,
+                "failed_items": failed_items, "rate_limited": rate_limited,
             }
 
             if process.returncode == 0:
@@ -358,45 +397,61 @@ class SpotifyMusicDownloader:
         except Exception as e:
             self.log_manager.log_error(f"Download process exception: {e}", console=True)
             self._last_download_stats = {
-                "succeeded": succeeded, "skipped": skipped, "failed": failed
+                "succeeded": succeeded, "skipped": skipped, "failed": failed,
+                "failed_items": failed_items, "rate_limited": rate_limited,
             }
             pbar.close()
-            return False
-               
+            return False               
+        
     def _download_with_retry(self, url: str, output_template: str, extra_args: list = None,
-                                item_type: str = "item", total_items: int = None, desc: str = None) -> bool:
-            
-            errors_file = None
-            if extra_args and "--save-errors" in extra_args:
-                idx = extra_args.index("--save-errors")
-                if idx + 1 < len(extra_args):
-                    errors_file = extra_args[idx + 1]
-            
-            for attempt in range(1, self.max_retries + 1):
-                if errors_file:
-                    try:
-                        open(errors_file, "w", encoding="utf-8").close()
-                    except OSError:
-                        pass
-                    
-                Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{self.max_retries})")
-                if attempt > 1:
-                    print(f"Waiting {self.retry_delay} seconds before retry...")
-                    time.sleep(self.retry_delay)
-                try:
-                    success = self.run_download(url, output_template, extra_args,
-                                                total_items=total_items, item_desc=item_type, desc=desc)
-                    if success:
-                        self.log_manager.log_success(f"Successfully downloaded {item_type}: {url}")
-                        if item_type in ['album', 'playlist', 'artist']:
-                            Helpers.cleanup_directory(self.__output_directory, self.log_manager)
-                        return True
-                except Exception as e:
-                    self.log_manager.log_error(f"Attempt {attempt} failed: {e}")
-                    if attempt == self.max_retries:
-                        self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
-            return False
+                            item_type: str = "item", total_items: int = None, desc: str = None) -> bool:
 
+        errors_file = None
+        if extra_args and "--save-errors" in extra_args:
+            idx = extra_args.index("--save-errors")
+            if idx + 1 < len(extra_args):
+                errors_file = extra_args[idx + 1]
+
+        for attempt in range(1, self.max_retries + 1):
+            if errors_file:
+                try:
+                    open(errors_file, "w", encoding="utf-8").close()
+                except OSError:
+                    pass
+
+            Enhanced_Menu.print_section(f"Downloading {item_type} (Attempt {attempt}/{self.max_retries})")
+
+            if attempt > 1:
+                if self._last_download_stats.get("rate_limited"):
+                    wait = min(self.rate_limit_backoff * (2 ** (attempt - 2)),
+                            self.rate_limit_max_wait)
+                    Enhanced_Menu.print_status(
+                        f"YouTube rate limit detected - backing off {wait}s before retrying. "
+                        f"Already-downloaded tracks will be skipped.", "warning")
+                else:
+                    wait = self.retry_delay
+                    print(f"Waiting {wait} seconds before retry...")
+                time.sleep(wait)
+
+            try:
+                success = self.run_download(url, output_template, extra_args,
+                                            total_items=total_items, item_desc=item_type, desc=desc)
+                if success:
+                    self.log_manager.log_success(f"Successfully downloaded {item_type}: {url}")
+                    if item_type in ['album', 'playlist', 'artist']:
+                        Helpers.cleanup_directory(self.__output_directory, self.log_manager)
+                    return True
+            except Exception as e:
+                self.log_manager.log_error(f"Attempt {attempt} failed: {e}")
+                if attempt == self.max_retries:
+                    self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
+
+        if self._last_download_stats.get("rate_limited"):
+            self.log_manager.log_failure(
+                f"Gave up after {self.max_retries} attempts due to YouTube rate limiting: {url}. "
+                f"Re-run later - the archive (--save-file) means finished tracks are skipped.")
+        return False
+    
     def _download_item(self, item_type: str, url_prompt: str, output_template: str,
                        confirm_large: bool = False, use_archive: bool = False,
                        force_url: str = None) -> bool:

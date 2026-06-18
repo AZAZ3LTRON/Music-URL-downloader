@@ -11,7 +11,6 @@ from colorama import init, Fore, Style
 import requests  # moved import to top
 import json
 
-
 init(autoreset=True)
 
 from .EnhancedMenu import Enhanced_Menu  # assumed existing
