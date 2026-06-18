@@ -62,10 +62,12 @@ class SpotifyMusicDownloader:
         self.max_retries = 3
         self.retry_delay = 10
         self.download_timeout = 120
-        self.max_concurrent = 3
+        self.max_concurrent = 2
         self.rate_limit_backoff = 300     # base wait (s) after a YouTube rate limit
         self.rate_limit_max_wait = 1800 
-                
+        self.yt_dlp_sleep_min = 3          # min seconds yt-dlp waits between downloads
+        self.yt_dlp_sleep_max = 7          # max seconds (random delay in this range)
+
         self.archives_dir = Path("archives")
         self.archives_dir.mkdir(exist_ok=True)
         self.__output_directory.mkdir(parents=True, exist_ok=True)
@@ -128,6 +130,9 @@ class SpotifyMusicDownloader:
             "retry_delay": 10,
             "download_timeout": 120,
             "use_cookies": False,
+            "max_concurrent": 2,
+            "yt_dlp_sleep_min": 3,
+            "yt_dlp_sleep_max": 7,
         }
         try:
             if os.path.exists(self.__configuration_file):
@@ -147,8 +152,11 @@ class SpotifyMusicDownloader:
             self.max_retries = config.get("max_retries", 3)
             self.retry_delay = config.get("retry_delay", 10)
             self.download_timeout = config.get("download_timeout", 120)
-            self.max_concurrent = config.get("max_concurrent", 3)
-
+            self.max_concurrent = config.get("max_concurrent", 2)
+            
+            self.yt_dlp_sleep_min = config.get("yt_dlp_sleep_min", 3)
+            self.yt_dlp_sleep_max = config.get("yt_dlp_sleep_max", 7)
+            
         except Exception as e:
             self.log_manager.log_error(f"Error loading configuration: {e}")
             self.__output_directory = Path(primary_config["output_directory"])
@@ -170,6 +178,8 @@ class SpotifyMusicDownloader:
                     "download_timeout": self.download_timeout,
                     "max_concurrent": self.max_concurrent,
                     "use_cookies": self.use_cookies,
+                    "yt_dlp_sleep_min": self.yt_dlp_sleep_min,
+                    "yt_dlp_sleep_max": self.yt_dlp_sleep_max,
                 }
             else:
                 config = {**config}
@@ -283,7 +293,16 @@ class SpotifyMusicDownloader:
             "--output", output_template,
             "--overwrite", "skip",
             "--print-errors",
+            "--threads", str(self.max_concurrent),
         ]
+
+        # Throttle YouTube requests to avoid rate-limit / 403s
+        if self.yt_dlp_sleep_min:
+            sleep_args = f"--sleep-interval {self.yt_dlp_sleep_min}"
+            if self.yt_dlp_sleep_max:
+                sleep_args += f" --max-sleep-interval {self.yt_dlp_sleep_max}"
+            cmd.extend(["--yt-dlp-args", sleep_args])
+            
         cookie_file = self._get_cookie_file()
         if cookie_file:
             cmd.extend(["--cookie-file", cookie_file])
@@ -412,6 +431,7 @@ class SpotifyMusicDownloader:
             if idx + 1 < len(extra_args):
                 errors_file = extra_args[idx + 1]
 
+        self.log_manager.reset_session_failures()
         for attempt in range(1, self.max_retries + 1):
             if errors_file:
                 try:
@@ -562,18 +582,28 @@ class SpotifyMusicDownloader:
                 else:
                     succeeded_count = self._last_download_stats["succeeded"]  # fallback (no known total)
 
+                for detail in failed_items:
+                    self.log_manager.log_track_failure(detail, source_url=url)
+                    
+                summary = self.log_manager.get_session_summary()
+                failed_count = summary["total"]
+                succeeded_count = max(total - failed_count, 0) if total else self._last_download_stats["succeeded"]
+                
+                
                 print()
                 Enhanced_Menu.print_status("Playlist download summary:", "info")
                 print(f"  {Fore.GREEN}Succeeded:{Style.RESET_ALL} {succeeded_count}")
                 print(f"  {Fore.RED}Failed:{Style.RESET_ALL} {failed_count}")
+                labels = {"not_found": "Not found (won't recover)", "rate_limited": "Rate-limited (retry later)",
+                        "download_error": "Download errors"}
+                for cat in ("not_found", "rate_limited", "download_error"):
+                    if summary[cat]:
+                        print(f"      {labels[cat]}: {summary[cat]}")
                 if total:
                     print(f"  {Fore.CYAN}Total tracks:{Style.RESET_ALL} {total}")
-
-                if failed_items:
-                    print(f"{Fore.RED} Some links failed to download: Check failed.log for more info {Style.RESET_ALL}")
-                    for detail in failed_items:
-                        self.log_manager.log_failure(f"{url} | {detail}", console=False)
-
+                if failed_count:
+                    print(f"{Fore.RED} Some tracks failed - see failed.log {Style.RESET_ALL}")
+                    
             if force_url:
                 return success
             
@@ -644,25 +674,24 @@ class SpotifyMusicDownloader:
         if Enhanced_Menu.get_input("Configure download settings?", "yn", default=False):
             self.get_user_preferences()
 
-        output_template = str(self.output_directory / "{artists} - {title}.{output-ext}")
-        success = False
+        output_template = str(self.__output_directory/"Searches"/"{artists} - {title}.{output-ext}")
         for attempt in range(1, self.max_retries + 1):
             Enhanced_Menu.print_status(f"Attempt {attempt}/{self.max_retries}", "info")
             if attempt > 1:
-                Enhanced_Menu.print_status(f"Waiting {self.retry_delay} seconds before retry...", "info")
-                time.sleep(self.retry_delay)
+                if self._last_download_stats.get("rate_limited"):
+                    wait = min(self.rate_limit_backoff * (2 ** (attempt - 2)),
+                            self.rate_limit_max_wait)
+                    Enhanced_Menu.print_status(f"Rate limit detected - backing off {wait}s...", "warning")
+                else:
+                    wait = self.retry_delay
+                    Enhanced_Menu.print_status(f"Waiting {wait}s before retry...", "info")
+                time.sleep(wait)
             try:
                 if self.run_download(f":{song_query}", output_template):
                     success = True
                     break
             except Exception as e:
                 self.log_manager.log_error(f"Unexpected error: {e}")
-        if success:
-            self.log_manager.log_success(f"Successfully downloaded: '{song_query}'")
-            return True
-        else:
-            self.log_manager.log_failure(f"Failed to download after {self.max_retries} attempts: '{song_query}'")
-            return False
     
     #  ================================= Problem with functions as spotdl login features has been disabled, till better one is writing  =================================
     

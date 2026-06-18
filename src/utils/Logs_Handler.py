@@ -32,6 +32,11 @@ class Logs_Manager:
         self.error_logger = None
         self.console_logger = None
         
+        self._session_failed_urls = set()
+        self._session_failure_counts = {"not_found": 0, "rate_limited": 0, "download_error": 0}
+        self._track_fail_re = re.compile(
+            r'(https?://open\.spotify\.com/track/[A-Za-z0-9]+)\s*-\s*(\w+):\s*(.*)')
+        
         # Setup the logs
         self.setup_logs()
         
@@ -117,6 +122,46 @@ class Logs_Manager:
                 self.error_logger.error(message, exc_info=exc_info)
             if console and self.console_logger:
                 self.console_logger.info(f"{self.color_map['error']}{message}{Style.RESET_ALL}")
+    
+    # ================= Advanced Failure log =====================
+    def reset_session_failures(self):
+        """Call at the start of each download run so dedup/counters are per-run."""
+        with self._lock:
+            self._session_failed_urls.clear()
+            self._session_failure_counts = {"not_found": 0, "rate_limited": 0, "download_error": 0}
+
+    def _categorize(self, etype: str, reason: str) -> str:
+        text = f"{etype} {reason}".lower()
+        if any(m in text for m in ('http error 403', 'rate-limited', 'rate/request limit',
+                                'max retries', 'sign in to confirm')):
+            return "rate_limited"
+        if 'no results' in text or etype == 'LookupError':
+            return "not_found"
+        return "download_error"
+
+    def log_track_failure(self, raw_line: str, source_url: str = None):
+        """Parse a raw spotdl failure line: dedupe by track, categorise, write ONE clean entry.
+        Lines that aren't a recognisable per-track failure are treated as noise and dropped."""
+        m = self._track_fail_re.search(raw_line)
+        if not m:
+            return  # traceback fragment / duplicate noise - ignore
+        track_url, etype, reason = m.group(1), m.group(2), m.group(3).strip()
+        category = self._categorize(etype, reason)
+        with self._lock:
+            if track_url in self._session_failed_urls:
+                return  # already recorded this track this run
+            self._session_failed_urls.add(track_url)
+            self._session_failure_counts[category] = self._session_failure_counts.get(category, 0) + 1
+            if self.failed_logger:
+                prefix = f"{source_url} | " if source_url else ""
+                self.failed_logger.info(f"{prefix}[{category}] {track_url} - {etype}: {reason}")
+
+    def get_session_summary(self) -> dict:
+        """Deduped failure counts for the current run."""
+        with self._lock:
+            counts = dict(self._session_failure_counts)
+        counts["total"] = sum(counts.values())
+        return counts
     
     # =============== Log Statistics & Other function ============
     def log_statistics(self):
