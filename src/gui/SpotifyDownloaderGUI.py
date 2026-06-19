@@ -649,6 +649,7 @@ class HomePage(QWidget):
         h.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.table.setVisible(False)
         outer.addWidget(self.table, 1)
+        outer.addStretch(1)          # same fix
 
     # -- theming hook
     def refresh_icons(self):
@@ -861,6 +862,7 @@ class HistoryPage(QWidget):
         self.empty.setObjectName("Faint")
         self.empty.setAlignment(Qt.AlignCenter)
         outer.addWidget(self.empty)
+        outer.addStretch(1)
 
     def refresh_icons(self):
         self.clear_btn.setIcon(make_icon("trash", self.win.theme.c["text_dim"], 16))
