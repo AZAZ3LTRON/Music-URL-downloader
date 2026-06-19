@@ -552,7 +552,7 @@ class SpotifyMusicDownloader:
                         f"album_{album_id.group(1)}.spotdl" if album_id
                         else f"album_{url_hash}.spotdl"
                     )
-                if 'playlist' in url:
+                elif 'playlist' in url:
                     playlist_id = re.search(r'playlist/([a-zA-Z0-9]+)', url)
                     archive_path = self.archives_dir / (
                         f"playlist_{playlist_id.group(1)}.spotdl" if playlist_id else f"playlist_{url_hash}.spotdl"

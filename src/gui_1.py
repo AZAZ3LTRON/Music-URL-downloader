@@ -1,13 +1,9 @@
+# launch.py
 import sys
 from PySide6.QtWidgets import QApplication
-from gui.YoutubeDownloaderGUI import YoutubeMusicGUI
+from gui.SpotifyDownloaderGUI import MainWindow
 
-def main():
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    window = YoutubeMusicGUI.MainWindow()
-    window.show()
-    sys.exit(app.exec())
-
-if __name__ == "__main__":
-    main()
+app = QApplication(sys.argv)
+win = MainWindow()
+win.show()
+sys.exit(app.exec())
