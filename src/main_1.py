@@ -19,7 +19,7 @@ from utils.CookieManager import CookieManager
 from utils.DownloaderUtils import DownloaderUtils 
 from utils.EnhancedMenu import Enhanced_Menu
 from utils.Logs_Handler import Logs_Manager
-from utils.Validators import Helpers
+from src.utils.Helpers import Helpers
 
 from core.YoutubeMusicDownloader import YoutubeMusicDownloader
 

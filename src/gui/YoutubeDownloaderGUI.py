@@ -22,7 +22,7 @@ from PySide6.QtGui import QFont, QTextCursor, QIcon, QPixmap, QPainter, QColor, 
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
 from core.YoutubeMusicDownloader import YoutubeMusicDownloader  # type: ignore
-from utils.Validators import Helpers  # type: ignore
+from src.utils.Helpers import Helpers  # type: ignore
 from interface.youtube_gui_interface import DownloaderInterface # type: ignore
 
 class YoutubeMusicGUI:

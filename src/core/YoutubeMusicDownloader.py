@@ -19,7 +19,7 @@ from utils.CookieManager import CookieManager
 from utils.DownloaderUtils import DownloaderUtils 
 from utils.EnhancedMenu import Enhanced_Menu#  <-- new helpers module
 from utils.Logs_Handler import Logs_Manager
-from utils.Validators import Helpers
+from utils.Helpers import Helpers
 from utils.DownloadHistory import DownloadHistory
 init(autoreset=True)
 os.makedirs("cookies", exist_ok=True)

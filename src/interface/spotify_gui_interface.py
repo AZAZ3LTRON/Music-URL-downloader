@@ -11,7 +11,7 @@ include_path = (current_dir / ".." / "include").resolve()
 sys.path.insert(0, str(include_path))
 
 from core.SpotifyDownloader import SpotifyMusicDownloader   #type: ignore
-from utils.Validators import Helpers  #type: ignore
+from src.utils.Helpers import Helpers  #type: ignore
 from utils.EnhancedMenu import Enhanced_Menu #type: ignore
 
 # Needs change
