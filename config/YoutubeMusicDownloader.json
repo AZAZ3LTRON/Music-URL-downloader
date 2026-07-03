@@ -1,9 +1,12 @@
 {
-  "output_directory": "C:\\Users\\Ayomide Ajimuda\\Music\\Youtube",
+  "output_directory": "C:\\Users\\Ayomide\\Music\\YouTube",
   "audio_quality": "320k",
-  "audio_format": "flac",
+  "audio_format": "mp3",
   "max_retries": 3,
   "retry_delay": 10,
   "download_timeout": 120,
-  "use_cookies": false
+  "max_concurrent": 2,
+  "use_cookies": false,
+  "yt_dlp_sleep_min": 3,
+  "yt_dlp_sleep_max": 7
 }

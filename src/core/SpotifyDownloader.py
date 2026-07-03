@@ -18,7 +18,7 @@ from utils.DownloaderUtils import DownloaderUtils
 from utils.EnhancedMenu import Enhanced_Menu
 from utils.Logs_Handler import Logs_Manager
 from utils.DownloadHistory import DownloadHistory
-from src.utils.Helpers import Helpers 
+from utils.Helpers import Helpers 
 
 init(autoreset=True)
 os.makedirs("cookies", exist_ok=True)
@@ -552,7 +552,7 @@ class SpotifyMusicDownloader:
                         f"album_{album_id.group(1)}.spotdl" if album_id
                         else f"album_{url_hash}.spotdl"
                     )
-                elif 'playlist' in url:
+                if 'playlist' in url:
                     playlist_id = re.search(r'playlist/([a-zA-Z0-9]+)', url)
                     archive_path = self.archives_dir / (
                         f"playlist_{playlist_id.group(1)}.spotdl" if playlist_id else f"playlist_{url_hash}.spotdl"

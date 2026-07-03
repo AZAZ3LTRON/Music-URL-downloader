@@ -7,7 +7,7 @@ from colorama import init, Fore, Style
 
 from utils.EnhancedMenu import Enhanced_Menu
 
-from test.TestDownloader import SpotifyMusicDownloader
+from core.SpotifyDownloader import SpotifyMusicDownloader
 init(autoreset=True)
 
 def main():
