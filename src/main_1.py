@@ -1,26 +1,10 @@
-import re
 import sys
-import os
-import subprocess
 import time
-import hashlib
-import threading
-import json
 
-from functools import wraps
 from pathlib import Path
-from urllib.parse import urlparse
-from typing import Dict
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
 from colorama import init, Fore, Style
 
-from utils.CookieManager import CookieManager
-from utils.DownloaderUtils import DownloaderUtils 
 from utils.EnhancedMenu import Enhanced_Menu
-from utils.Logs_Handler import Logs_Manager
-from src.utils.Helpers import Helpers
-
 from core.YoutubeMusicDownloader import YoutubeMusicDownloader
 
 init(autoreset=True)
@@ -29,16 +13,14 @@ def main():
     """Main function to run the YouTube Downloader with integrated menus."""
     Enhanced_Menu.clear_screen()
     print(f"""{Fore.RED}{Style.BRIGHT}
-        
+
 ██╗   ██╗ ██████╗ ██╗   ██╗████████╗██╗   ██╗██████╗ ███████╗    ███╗   ███╗██╗   ██╗███████╗██╗ ██████╗    ██████╗  ██████╗ ██╗    ██╗███╗   ██╗██╗      ██████╗  █████╗ ██████╗ ███████╗██████╗ 
 ╚██╗ ██╔╝██╔═══██╗██║   ██║╚══██╔══╝██║   ██║██╔══██╗██╔════╝    ████╗ ████║██║   ██║██╔════╝██║██╔════╝    ██╔══██╗██╔═══██╗██║    ██║████╗  ██║██║     ██╔═══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗
  ╚████╔╝ ██║   ██║██║   ██║   ██║   ██║   ██║██████╔╝█████╗      ██╔████╔██║██║   ██║███████╗██║██║         ██║  ██║██║   ██║██║ █╗ ██║██╔██╗ ██║██║     ██║   ██║███████║██║  ██║█████╗  ██████╔╝
   ╚██╔╝  ██║   ██║██║   ██║   ██║   ██║   ██║██╔══██╗██╔══╝      ██║╚██╔╝██║██║   ██║╚════██║██║██║         ██║  ██║██║   ██║██║███╗██║██║╚██╗██║██║     ██║   ██║██╔══██║██║  ██║██╔══╝  ██╔══██╗
    ██║   ╚██████╔╝╚██████╔╝   ██║   ╚██████╔╝██████╔╝███████╗    ██║ ╚═╝ ██║╚██████╔╝███████║██║╚██████╗    ██████╔╝╚██████╔╝╚███╔███╔╝██║ ╚████║███████╗╚██████╔╝██║  ██║██████╔╝███████╗██║  ██║
    ╚═╝    ╚═════╝  ╚═════╝    ╚═╝    ╚═════╝ ╚═════╝ ╚══════╝    ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝    ╚═════╝  ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝
-                                                                                                                                                                                                  
-                                                                                                                                                                                                  
-                                                                                                                                                                                                              
+
     {Style.RESET_ALL}""")
     print(f"{Fore.YELLOW}{Style.BRIGHT}YouTube Music Downloader{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}Initializing...{Style.RESET_ALL}")
@@ -46,7 +28,7 @@ def main():
     # Define directories using pathlib
     home = Path.home()
     music_dir = home / "Music"
-    cookies_dir = Path("cookies")   # keep relative or make absolute? See note below.
+    cookies_dir = Path("cookies")
 
     # Ensure they exist
     music_dir.mkdir(parents=True, exist_ok=True)
@@ -81,7 +63,7 @@ def main():
         try:
             downloader.save_config()
             print(f"{Fore.GREEN}Settings saved.{Style.RESET_ALL}")
-        except:
+        except Exception:
             pass
         print(f"\n{Fore.CYAN}Goodbye!{Style.RESET_ALL}\n")
         sys.exit(0)
@@ -91,7 +73,7 @@ def main():
         while True:
             Enhanced_Menu.clear_screen()
             Enhanced_Menu.print_header("PROGRAM SETTINGS", "Configure download preferences")
-            
+
             Enhanced_Menu.print_section("🎵 Download Settings")
             current_format = downloader._YoutubeMusicDownloader__audio_format
             current_quality = downloader._YoutubeMusicDownloader__audio_quality
@@ -99,26 +81,21 @@ def main():
             Enhanced_Menu.print_menu_item(2, "Audio Quality", f"Current: {Fore.GREEN}{current_quality}{Style.RESET_ALL}")
             current_dir = str(downloader._YoutubeMusicDownloader__output_directory)
             Enhanced_Menu.print_menu_item(3, "Output Directory", f"Current: {Fore.CYAN}{current_dir}{Style.RESET_ALL}")
-            
-            # New metadata option
-            metadata_status = "ENABLED" if downloader._YoutubeMusicDownloader__embed_metadata else "DISABLED"
-            metadata_color = Fore.GREEN if downloader._YoutubeMusicDownloader__embed_metadata else Fore.YELLOW
-            Enhanced_Menu.print_menu_item(4, "Metadata Embedding", f"Current: {metadata_color}{metadata_status}{Style.RESET_ALL}")
-            
+
             Enhanced_Menu.print_section("🌐 COOKIE SETTINGS")
             cookie_status = "ENABLED" if downloader.use_cookies else "DISABLED"
             cookie_color = Fore.GREEN if downloader.use_cookies else Fore.YELLOW
-            Enhanced_Menu.print_menu_item(5, "Cookie Authentication", f"Current: {cookie_color}{cookie_status}{Style.RESET_ALL}")
-            
+            Enhanced_Menu.print_menu_item(4, "Cookie Authentication", f"Current: {cookie_color}{cookie_status}{Style.RESET_ALL}")
+
             Enhanced_Menu.print_section("💾 Download Configuration")
-            Enhanced_Menu.print_menu_item(6, "Save Configuration")
-            Enhanced_Menu.print_menu_item(7, "Load Configuration")
-            Enhanced_Menu.print_menu_item(8, "Reset to Defaults")
+            Enhanced_Menu.print_menu_item(5, "Save Configuration")
+            Enhanced_Menu.print_menu_item(6, "Load Configuration")
+            Enhanced_Menu.print_menu_item(7, "Reset to Defaults")
             Enhanced_Menu.print_section("↩️  NAVIGATION")
-            Enhanced_Menu.print_menu_item(9, "Back to Main Menu")
+            Enhanced_Menu.print_menu_item(8, "Back to Main Menu")
             print()
-            
-            choice = Enhanced_Menu.get_input("Select option", "int", 1, 9)
+
+            choice = Enhanced_Menu.get_input("Select option", "int", 1, 8)
             if choice == 1:
                 Enhanced_Menu.clear_screen()
                 Enhanced_Menu.print_header("AUDIO FORMAT", "Select output format")
@@ -139,7 +116,7 @@ def main():
                     new_format = formats[format_choice - 1][1]
                     downloader._YoutubeMusicDownloader__audio_format = new_format
                     Enhanced_Menu.print_status(f"Audio format set to {new_format.upper()}", "success")
-                    
+
             elif choice == 2:
                 Enhanced_Menu.clear_screen()
                 Enhanced_Menu.print_header("AUDIO QUALITY", "Select bitrate/quality")
@@ -160,7 +137,7 @@ def main():
                     new_quality = qualities[quality_choice - 1][0]
                     downloader._YoutubeMusicDownloader__audio_quality = new_quality
                     Enhanced_Menu.print_status(f"Audio quality set to {new_quality}", "success")
-            
+
             # Set output
             elif choice == 3:
                 Enhanced_Menu.clear_screen()
@@ -181,33 +158,8 @@ def main():
                         Enhanced_Menu.print_status(f"Output directory changed to {new_dir}", "success")
                     except Exception as e:
                         Enhanced_Menu.print_status(f"Error: {str(e)[:50]}", "error")
-                        
+
             elif choice == 4:
-                Enhanced_Menu.clear_screen()
-                Enhanced_Menu.print_header("METADATA EMBEDDING",  "Control metadata in downloaded files")
-                print(f"{Fore.WHITE}Embedding metadata adds:{Style.RESET_ALL}")
-                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Artist and title tags")
-                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Album name")
-                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Track number")
-                print(f"  {Fore.GREEN}✓{Style.RESET_ALL} Cover art (thumbnail)")
-                print()
-                print(f"{Fore.YELLOW}Current status:{Style.RESET_ALL} ", end="")
-                if downloader._YoutubeMusicDownloader__embed_metadata:
-                    print(f"{Fore.GREEN}ENABLED{Style.RESET_ALL}")
-                else:
-                    print(f"{Fore.YELLOW}DISABLED{Style.RESET_ALL}")
-                print()
-                new_setting = Enhanced_Menu.get_input(
-                    "Enable metadata embedding? (y/n)",
-                    "yn",
-                    default=downloader._YoutubeMusicDownloader__embed_metadata
-                )
-                if new_setting is not None:
-                    downloader._YoutubeMusicDownloader__embed_metadata = new_setting
-                    status = "enabled" if new_setting else "disabled"
-                    Enhanced_Menu.print_status(f"Metadata embedding {status}", "success")
-                
-            elif choice == 5:
                 Enhanced_Menu.clear_screen()
                 Enhanced_Menu.print_header("COOKIE SETTINGS", "Manage authentication")
                 print(f"{Fore.WHITE}Cookies help with:{Style.RESET_ALL}")
@@ -227,22 +179,22 @@ def main():
                     downloader.use_cookies = new_setting
                     status = "enabled" if new_setting else "disabled"
                     Enhanced_Menu.print_status(f"Cookies {status}", "success")
-                    
-            elif choice == 6:
+
+            elif choice == 5:
                 try:
                     downloader.save_config()
                     Enhanced_Menu.print_status("Settings saved successfully", "success")
                 except Exception as e:
                     Enhanced_Menu.print_status(f"Error saving settings: {e}", "error")
-                    
-            elif choice == 7:
+
+            elif choice == 6:
                 try:
                     downloader.load_config()
                     Enhanced_Menu.print_status("Settings loaded successfully", "success")
                 except Exception as e:
                     Enhanced_Menu.print_status(f"Error loading settings: {e}", "error")
-                    
-            elif choice == 8:
+
+            elif choice == 7:
                 Enhanced_Menu.clear_screen()
                 Enhanced_Menu.print_header("RESET SETTINGS", "Restore defaults")
                 print(f"{Fore.YELLOW}⚠️  WARNING:{Style.RESET_ALL}")
@@ -251,15 +203,15 @@ def main():
                 print(f"{Fore.CYAN}Default settings:{Style.RESET_ALL}")
                 print(f"  Format: {Fore.YELLOW}mp3{Style.RESET_ALL}")
                 print(f"  Quality: {Fore.YELLOW}320k{Style.RESET_ALL}")
-                print(f"  Output: {Fore.YELLOW}Albums/{Style.RESET_ALL}")
+                print(f"  Output: {Fore.YELLOW}~/Music/YouTube{Style.RESET_ALL}")
                 print(f"  Cookies: {Fore.YELLOW}Disabled{Style.RESET_ALL}")
                 print()
                 confirm = Enhanced_Menu.get_input("Are you sure? (y/n)", "yn", default=False)
                 if confirm:
                     downloader.reset_to_defaults()
-            elif choice == 9:
+            elif choice == 8:
                 break
-            if choice != 9:
+            if choice != 8:
                 input(f"\n{Fore.CYAN}Press Enter to continue...{Style.RESET_ALL}")
 
     # Define actions as lambdas to ensure they're called only when selected
@@ -268,7 +220,7 @@ def main():
         2: lambda: downloader.download_album(),
         3: lambda: downloader.download_playlist(),
         4: lambda: downloader.search_and_download(),
-        5: lambda: downloader.download_channel(),
+        5: lambda: downloader.download_artist(),   # FIX: was download_channel() (no such method)
         6: lambda: downloader.manage_cookies(),
         7: lambda: downloader.check_dependencies(),
         8: lambda: handle_settings(),
@@ -290,17 +242,17 @@ def main():
             Enhanced_Menu.print_menu_item(3, "Download Playlist")
             Enhanced_Menu.print_menu_item(4, "Search & Download a Song")
             Enhanced_Menu.print_menu_item(5, "Download Artist")
-            
+
             Enhanced_Menu.print_section("⚙️  TOOLS & SETTINGS")
             Enhanced_Menu.print_menu_item(6, "Manage Cookies (for restricted content)")
             Enhanced_Menu.print_menu_item(7, "Check Dependencies")
             Enhanced_Menu.print_menu_item(8, "Program Settings")
-            
+
             Enhanced_Menu.print_section("❓ HELP & INFORMATION")
             Enhanced_Menu.print_menu_item(9, "Show Program Info")
             Enhanced_Menu.print_menu_item(10, "Troubleshooting")
             Enhanced_Menu.print_menu_item(11, "Show yt-dlp Help")
-            
+
             Enhanced_Menu.print_section("📊 LOG MANAGEMENT")
             Enhanced_Menu.print_menu_item(12, "Log Manager")
             Enhanced_Menu.print_menu_item(13, "Input History")
@@ -308,36 +260,31 @@ def main():
             Enhanced_Menu.print_menu_item(14, "Exit Program")
             print(f"\n{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
             Enhanced_Menu.print_status("Current Settings:", "info", "⚙️")
-            
+
             settings = [
                 ("Format", downloader._YoutubeMusicDownloader__audio_format),
                 ("Quality", downloader._YoutubeMusicDownloader__audio_quality),
                 ("Output", str(downloader._YoutubeMusicDownloader__output_directory)),
-                ("Metadata", "Enabled" if downloader._YoutubeMusicDownloader__embed_metadata else "Disabled"),  # new line
             ]
-            
+
             for setting_name, setting_value in settings:
                 print(f"  {Fore.CYAN}{setting_name}:{Style.RESET_ALL} {Fore.YELLOW}{setting_value}{Style.RESET_ALL}")
             cookie_status = "Enabled" if downloader.use_cookies else "Disabled"
             cookie_color = Fore.GREEN if downloader.use_cookies else Fore.YELLOW
             print(f"  {Fore.CYAN}Cookies:{Style.RESET_ALL} {cookie_color}{cookie_status}{Style.RESET_ALL}")
             print(f"{Style.DIM}{'─' * 60}{Style.RESET_ALL}")
-            
+
             choice = Enhanced_Menu.get_input("\nEnter your choice (1-14)", "int", 1, 14)
             action = actions.get(choice)
-            
+
             if action:
                 Enhanced_Menu.clear_screen()
                 try:
-                    # Call the lambda function
-                    result = action()
-                    
-                    # Handle the result if needed
-                    if result is False and choice not in [1,2,3,4,5,6,7,8,9,10,11,12,13,14]:
-                        print()
-                        retry = Enhanced_Menu.get_input("Operation failed. Try again? (y/n)", "yn", default=True)
-                        if retry:
-                            continue
+                    # Call the selected action. Download/utility methods handle
+                    # their own retry loops and return True/False; we don't
+                    # re-prompt here (the old `result is False and choice not in
+                    # [...]` guard was always False, i.e. dead code).
+                    action()
                 except KeyboardInterrupt:
                     Enhanced_Menu.print_status("Operation cancelled", "warning")
                 except Exception as e:
@@ -346,7 +293,7 @@ def main():
                     traceback.print_exc()
             else:
                 Enhanced_Menu.print_status("Invalid option", "error")
-                
+
             if choice != 13:
                 print()
                 cont = Enhanced_Menu.get_input("Return to main menu? (y/n)", "yn", default=True)

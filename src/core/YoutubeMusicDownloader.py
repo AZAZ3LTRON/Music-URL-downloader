@@ -1,5 +1,4 @@
 import re
-import sys
 import os
 import subprocess
 import time
@@ -21,47 +20,75 @@ from utils.EnhancedMenu import Enhanced_Menu#  <-- new helpers module
 from utils.Logs_Handler import Logs_Manager
 from utils.Helpers import Helpers
 from utils.DownloadHistory import DownloadHistory
+
 init(autoreset=True)
 os.makedirs("cookies", exist_ok=True)
+COOKIE_FILE = Path("cookies") / "cookies.txt"
+
+def rate_limit(calls_per_minute: int = 60):
+    def decorator(func):
+        last_called = [0.0]
+        call_lock = threading.Lock()
+        min_interval = 60.0 / calls_per_minute
+        
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            with call_lock:
+                now = time.monotonic()
+                wait = min_interval - (now - last_called[0])
+                last_called[0] = now + max(wait, 0)
+                if wait > 0:
+                    time.sleep(wait)
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 class YoutubeMusicDownloader:
+    _PERCENT_RE = re.compile(r'(\d{1,3}(?:\.\d+)?)\s*%')
+
     """Downloader Class that handles the downloading process"""
     def __init__(self):
-        self.__output_directory = Path.home() / "Music" / "YouTubeMusicDownloads"
+        self.__output_directory = Path.home() / "Music" / "YouTube"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.__configuration_file = r"config/YoutubeMusicDownloader.json"
-        self.cookie_manager = CookieManager()
         self.log_manager = Logs_Manager()          # must be thread‑safe now
         self.utils = DownloaderUtils()
         self.history = DownloadHistory()
         self.use_cookies = False
-        self.__embed_metadata = False
 
         self.max_retries = 3
         self.retry_delay = 10
         self.download_timeout = 120
+
+        self.max_concurrent = 2
+        self.yt_dlp_sleep_min = 3          # min seconds yt-dlp waits between downloads
+        self.yt_dlp_sleep_max = 7          # max seconds (random delay in this range)
         
         self.archives_dir = Path("archives")
         self.archives_dir.mkdir(exist_ok=True)
         self.__output_directory.mkdir(parents=True, exist_ok=True)
-        
+
+        os.makedirs(os.path.dirname(self.__configuration_file), exist_ok=True)
+ 
         try:
             self.load_config()
         except Exception as e:
             self.log_manager.log_error(f"Error loading config: {e}")
     
-    # ==================== Configuration Managers ====================
     def load_config(self):
         """Load configuration from json file"""
         primary_config = {
-            "output_directory": Path.home() / "Music" / "YouTubeMusicDownloads",
+            "output_directory": str(Path.home() / "Music" / "YouTube"),
             "audio_quality": "320k",
             "audio_format": "mp3",
             "max_retries": self.max_retries,
             "retry_delay": self.retry_delay,
             "download_timeout": self.download_timeout,
-            "use_cookies": False
+            "use_cookies": False,
+            "max_concurrent": 2,
+            "yt_dlp_sleep_min": 3,
+            "yt_dlp_sleep_max": 7,
         }
         try:
             if os.path.exists(self.__configuration_file):
@@ -72,28 +99,31 @@ class YoutubeMusicDownloader:
                 config = primary_config
                 self.save_config(config)
 
-            if "output_directory" in config:
-                self.__output_directory = Path(config["output_directory"])
-            if "audio_quality" in config:
-                self.__audio_quality = config["audio_quality"]
-            if "audio_format" in config:
-                self.__audio_format = config["audio_format"]
-            if "use_cookies" in config:
-                self.use_cookies = config["use_cookies"]
-            if "embed_metadata" in config:
-                self.__embed_metadata = config["embed_metadata"]
-                
+            self.__output_directory = Path(config["output_directory"])
+            self.__audio_quality = config["audio_quality"]
+            self.__audio_format = config["audio_format"]
+            self.use_cookies = config["use_cookies"]
+                        
+            # Update retry/delay settings
+            self.max_retries = config.get("max_retries", 3)
+            self.retry_delay = config.get("retry_delay", 10)
+            self.download_timeout = config.get("download_timeout", 120)
+            self.max_concurrent = config.get("max_concurrent", 2)
+            
+            self.yt_dlp_sleep_min = config.get("yt_dlp_sleep_min", 3)
+            self.yt_dlp_sleep_max = config.get("yt_dlp_sleep_max", 7)
+            
         except Exception as e:
             self.log_manager.log_error(f"Error loading configuration: {e}")
             self.__output_directory = Path(primary_config["output_directory"])
             self.__audio_quality = primary_config["audio_quality"]
             self.__audio_format = primary_config["audio_format"]
             self.use_cookies = primary_config["use_cookies"]
-            self.__embed_metadata = primary_config["embed_metadata"]
 
     def save_config(self, config: Dict = None):
         """Save configuration to file"""
         try:
+            os.makedirs(os.path.dirname(self.__configuration_file), exist_ok=True)
             if config is None:
                 config = {
                     "output_directory": str(self.__output_directory),
@@ -102,15 +132,20 @@ class YoutubeMusicDownloader:
                     "max_retries": self.max_retries,
                     "retry_delay": self.retry_delay,
                     "download_timeout": self.download_timeout,
+                    "max_concurrent": self.max_concurrent,
                     "use_cookies": self.use_cookies,
-                    "embed_metadata": self.__embed_metadata
+                    "yt_dlp_sleep_min": self.yt_dlp_sleep_min,
+                    "yt_dlp_sleep_max": self.yt_dlp_sleep_max,
                 }
+            else:
+                config = {**config}
+                if "output_directory" in config:
+                    config["output_directory"] = str(config["output_directory"])
             with open(self.__configuration_file, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
         except Exception as e:
             self.log_manager.log_error(f"Error saving configuration: {e}")
 
-    # ==================== User preferences (stays in main class) ====================
     def get_user_preferences(self):
             """Takes in user input for the download settings"""
             Enhanced_Menu.print_header("Download Settings", "Configure your music conversion preferences")
@@ -166,7 +201,7 @@ class YoutubeMusicDownloader:
             if output_path:
                 self.__output_directory = Path(output_path)
             else:
-                self.__output_directory = Path.home() / "Music" / "YouTubeMusicDownloads"
+                self.__output_directory = Path.home() / "Music" / "YouTube"
             self.__output_directory.mkdir(parents=True, exist_ok=True)
 
             # Cookie choice
@@ -182,174 +217,194 @@ class YoutubeMusicDownloader:
             else:
                 self.use_cookies = False
             
-            # Metadata embedding
-            metadata_choice = Enhanced_Menu.get_input("Embed metadata (artist, album, cover art) into files? (y/n):- ", "yn", default=self.__embed_metadata)
-            self.__embed_metadata = metadata_choice
-
-    # ==================== Core download methods ====================
     def run_download(self, url: str, output_template: str, additional_args=None):
-        """Run yt-dlp download with modern syntax & tqdm progress bar"""
-        # Ensure output directory exists
-        output_directory = os.path.dirname(output_template)
-        if output_directory:
-            os.makedirs(output_directory, exist_ok=True)
+            """Run yt-dlp download with modern syntax & tqdm progress bar"""
+            # Ensure output directory exists
+            output_directory = os.path.dirname(output_template)
+            if output_directory:
+                os.makedirs(output_directory, exist_ok=True)
 
-        command = [
-            "yt-dlp",
-            "-x",
-            "--audio-format", self.__audio_format,
-            "--audio-quality", self.__audio_quality,
-            "-o", output_template,
-            "--no-overwrites",
-            "--embed-thumbnail",
-            "--newline",
-            "--progress",
-            "--console-title",
-            "--quiet",
-            "--no-warnings",
-            "--ignore-errors",
-            "--retries", "10",
-            "--fragment-retries", "10",
-            "--buffer-size", "16K",
-            "--http-chunk-size", "10M",
-            "--extractor-args", "youtube:player_client=android",
-        ]
+            command = [
+                "yt-dlp",
+                "-x",
+                "-f", "bestaudio/best",          # fallback so a missing ideal format doesn't hard-fail
+                "--audio-format", self.__audio_format,
+            ]
 
-        if self.use_cookies and self.cookie_manager.current_cookie_file:
-            cookie_args = self.cookie_manager.get_arguments_ytdlp()
-            if cookie_args:
-                command.extend(cookie_args)
-                self.log_manager.log_success("Using cookies for better authentication")
-            else:
-                self.log_manager.log_error("Error using cookies")
+            # --audio-quality only accepts 0-10 or a bitrate like 320K, not "auto"/"disable"
+            if self.__audio_quality not in ("auto", "disable"):
+                command += ["--audio-quality", self.__audio_quality]
 
-        if additional_args:
-            if isinstance(additional_args, list):
-                command.extend(additional_args)
-            else:
-                command.append(additional_args)
-        command.append(url)
-        
-        if self.__embed_metadata:
-            command.extend(["--add-metadata"])
+            command += [
+                "-o", output_template,
+                "--no-overwrites",
+                "--add-metadata",
+                "--embed-thumbnail",
+                "--newline",
+                "--progress",
+                "--console-title",
+                "--ignore-errors",
+                "--retries", "10",
+                "--fragment-retries", "10",
+                "--extractor-retries", "15",
+                "--buffer-size", "16K",
+                "--http-chunk-size", "10M",
+                "--sleep-interval", str(self.yt_dlp_sleep_min),
+                "--max-sleep-interval", str(self.yt_dlp_sleep_max),
+            ]
 
-        progress_bar = None
-        try:
-            progress_bar = tqdm(
-                desc="Downloading",
-                unit="B",
-                unit_scale=True,
-                unit_divisor=1024,
-                leave=False,
-                bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
-                dynamic_ncols=True
-            )
+            # Suppress noise in normal runs; set self.debug = True to see real yt-dlp errors
+            if not getattr(self, "debug", False):
+                command += ["--quiet", "--no-warnings"]
 
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-                encoding='utf-8',
-                errors='replace'
-            )
+            if self.use_cookies:
+                if COOKIE_FILE.exists():
+                    command.extend(["--cookies", str(COOKIE_FILE)])
+                    self.log_manager.log_success("Using cookies for better authentication")
+                else:
+                    self.log_manager.log_error(
+                        f"Cookies enabled but no cookie file found at {COOKIE_FILE}"
+                    )
 
-            output_lines = []
-            for line in iter(process.stdout.readline, ''):
-                line = line.strip()
-                output_lines.append(line)
-                if "[download]" in line:
-                    try:
-                        percent_match = re.search(r'(\d+\.?\d*)%', line)
-                        if percent_match:
-                            percent = float(percent_match.group(1))
-                            progress_bar.set_description(f"{Fore.CYAN}Downloading: {percent:.1f}%{Style.RESET_ALL}")
+            if additional_args:
+                if isinstance(additional_args, list):
+                    command.extend(additional_args)
+                else:
+                    command.append(additional_args)
+            command.append(url)
 
-                        size_match = re.search(r'of\s+([\d\.]+\s*[KMGT]?i?B)', line)
-                        if size_match and progress_bar.total is None:
-                            total_str = size_match.group(1)
-                            total_bytes = Helpers.parse_size(total_str)   # FIX: use Helpers
-                            if total_bytes:
-                                progress_bar.total = total_bytes
-
-                        downloaded_match = (re.search(r'([\d\.]+\s*[KMGT]?i?B)\s+at', line) or
-                                            re.search(r'([\d\.]+\s*[KMGT]?i?B)\s+ETA', line) or
-                                            re.search(r'([\d\.]+\s*[KMGT]?i?B)\s*\/', line))
-                        if downloaded_match:
-                            downloaded_str = downloaded_match.group(1)
-                            downloaded_bytes = Helpers.parse_size(downloaded_str)
-                            if downloaded_bytes:
-                                progress_bar.n = downloaded_bytes
-
-                        speed_match = re.search(r'at\s+([\d\.]+\s*[KMGT]?i?B/s)', line)
-                        if speed_match:
-                            speed = speed_match.group(1)
-                            progress_bar.set_postfix_str(f"Speed: {speed}")
-
-                        eta_match = re.search(r'ETA\s+([\d:]+)', line)
-                        if eta_match:
-                            eta = eta_match.group(1)
-                            progress_bar.set_postfix_str(f"ETA: {eta}")
-
-                        progress_bar.refresh()
-                    except Exception:
-                        continue
-
-                if "100%" in line or "already been downloaded" in line or "[Merger]" in line:
-                    if progress_bar.total and progress_bar.n < progress_bar.total:
-                        progress_bar.n = progress_bar.total
-                    progress_bar.set_description(f"{Fore.GREEN}Downloaded{Style.RESET_ALL}")
-                    progress_bar.set_postfix_str("")
-                    progress_bar.refresh()
-
-            process.wait()
-            progress_bar.close()
-            full_output = "\n".join(output_lines)
-
-            if process.returncode == 0:
-                return subprocess.CompletedProcess(
-                    args=command,
-                    returncode=0,
-                    stdout=full_output,
-                    stderr=""
+            progress_bar = None
+            try:
+                progress_bar = tqdm(
+                    desc="Downloading",
+                    unit="B",
+                    unit_scale=True,
+                    unit_divisor=1024,
+                    leave=False,
+                    bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
+                    dynamic_ncols=True
                 )
-            else:
+
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True,
+                    encoding='utf-8',
+                    errors='replace'
+                )
+
+                output_lines = []
+                for line in iter(process.stdout.readline, ''):
+                    line = line.strip()
+                    output_lines.append(line)
+                    if "[download]" in line:
+                        try:
+                            percent_match = re.search(r'(\d+\.?\d*)%', line)
+                            if percent_match:
+                                percent = float(percent_match.group(1))
+                                progress_bar.set_description(f"{Fore.CYAN}Downloading: {percent:.1f}%{Style.RESET_ALL}")
+
+                            size_match = re.search(r'of\s+([\d\.]+\s*[KMGT]?i?B)', line)
+                            if size_match and progress_bar.total is None:
+                                total_str = size_match.group(1)
+                                total_bytes = Helpers.parse_size(total_str)
+                                if total_bytes:
+                                    progress_bar.total = total_bytes
+
+                            downloaded_match = (re.search(r'([\d\.]+\s*[KMGT]?i?B)\s+at', line) or
+                                                re.search(r'([\d\.]+\s*[KMGT]?i?B)\s+ETA', line) or
+                                                re.search(r'([\d\.]+\s*[KMGT]?i?B)\s*\/', line))
+                            if downloaded_match:
+                                downloaded_str = downloaded_match.group(1)
+                                downloaded_bytes = Helpers.parse_size(downloaded_str)
+                                if downloaded_bytes:
+                                    progress_bar.n = downloaded_bytes
+
+                            speed_match = re.search(r'at\s+([\d\.]+\s*[KMGT]?i?B/s)', line)
+                            if speed_match:
+                                speed = speed_match.group(1)
+                                progress_bar.set_postfix_str(f"Speed: {speed}")
+
+                            eta_match = re.search(r'ETA\s+([\d:]+)', line)
+                            if eta_match:
+                                eta = eta_match.group(1)
+                                progress_bar.set_postfix_str(f"ETA: {eta}")
+
+                            progress_bar.refresh()
+                        except Exception:
+                            continue
+
+                    if "100%" in line or "already been downloaded" in line or "[Merger]" in line:
+                        if progress_bar.total and progress_bar.n < progress_bar.total:
+                            progress_bar.n = progress_bar.total
+                        progress_bar.set_description(f"{Fore.GREEN}Downloaded{Style.RESET_ALL}")
+                        progress_bar.set_postfix_str("")
+                        progress_bar.refresh()
+
+                process.wait()
+                progress_bar.close()
+                full_output = "\n".join(output_lines)
+                low = full_output.lower()
+
+                # Success
+                if process.returncode == 0:
+                    return subprocess.CompletedProcess(
+                        args=command, returncode=0, stdout=full_output, stderr=""
+                    )
+
+                # Archive skip / already-have-it is NOT a failure — treat as success
+                if ("has already been recorded in the archive" in low
+                        or "already been downloaded" in low
+                        or "nothing to download" in low):
+                    self.log_manager.log_success(f"Already downloaded (skipped): {url}")
+                    return subprocess.CompletedProcess(
+                        args=command, returncode=0, stdout=full_output, stderr=""
+                    )
+
+                # Genuine failure — classify (specific first, catch-all keeps raw tail)
                 error_msg = f"Download failed for {url} with code {process.returncode}"
-                if "unavailable" in full_output.lower():
-                    error_msg += " - Video is unavailable"
-                elif "private" in full_output.lower():
+                if "only images are available" in low:
+                    error_msg += " - No audio stream (SABR/format restriction)"
+                elif "requested format is not available" in low:
+                    error_msg += " - Requested format not available"
+                elif "javascript runtime" in low or "no supported js" in low:
+                    error_msg += " - Missing JS runtime (install Deno or Node)"
+                elif "sign in" in low or "not a bot" in low or "confirm your age" in low:
+                    error_msg += " - YouTube requires authentication (check cookies)"
+                elif "private video" in low:
                     error_msg += " - Video is private"
-                elif "age restriction" in full_output.lower():
+                elif "age" in low and "restrict" in low:
                     error_msg += " - Age restricted"
-                elif "copyright" in full_output.lower():
+                elif "members-only" in low or "members only" in low:
+                    error_msg += " - Members-only content"
+                elif "unavailable" in low or "not available in your" in low:
+                    error_msg += " - Video unavailable / region-locked"
+                elif "copyright" in low:
                     error_msg += " - Copyright restriction"
-                elif "format" in full_output.lower():
-                    error_msg += " - Format not available"
-                elif "ffmpeg" in full_output.lower():
+                elif "ffmpeg" in low:
                     error_msg += " - FFmpeg conversion error"
                 else:
-                    error_msg += f" - Error: {full_output[-200:] if full_output else 'Unknown'}"
+                    error_msg += f" - Error: {full_output[-400:] if full_output else 'Unknown'}"
+
                 self.log_manager.log_failure(error_msg)
                 raise subprocess.CalledProcessError(
-                    process.returncode,
-                    command,
-                    output=full_output,
-                    stderr=""
+                    process.returncode, command, output=full_output, stderr=""
                 )
-        except FileNotFoundError:
-            error_msg = "yt-dlp not found. Please install it with: pip install yt-dlp"
-            self.log_manager.log_error(error_msg)
-            raise RuntimeError(error_msg)
-        except Exception as e:
-            error_msg = f"Unexpected error in run_download: {e}"
-            self.log_manager.log_error(error_msg)
-            if progress_bar is not None:
-                progress_bar.close()
-            raise
 
-    # -------------------- Retry wrapper --------------------
+            except FileNotFoundError:
+                error_msg = "yt-dlp not found. Please install it with: pip install yt-dlp"
+                self.log_manager.log_error(error_msg)
+                raise RuntimeError(error_msg)
+            except Exception as e:
+                error_msg = f"Unexpected error in run_download: {e}"
+                self.log_manager.log_error(error_msg)
+                if progress_bar is not None:
+                    progress_bar.close()
+                raise
+            
     def _download_with_retry(self, url: str, output_template: str, additional_args: list = None,
                              item_type: str = "item") -> bool:
         """Unified retry logic for downloads"""
@@ -385,7 +440,6 @@ class YoutubeMusicDownloader:
                     self.log_manager.log_failure(f"Failed after {self.max_retries} attempts: {url}")
         return False
 
-    # -------------------- Concurrent helper --------------------
     def _download_items_concurrently(self, tasks, max_workers=3, desc="Downloading"):
         """
         tasks: list of (url, output_template, additional_args, archive_path, task_id)
@@ -512,80 +566,6 @@ class YoutubeMusicDownloader:
                 else:
                     return False
 
-    def _validate_channel_url(self, url: str) -> bool:
-        """Check if the URL looks like a YouTube channel."""
-        patterns = [
-            r"youtube\.com/@[\w-]+",
-            r"youtube\.com/channel/[\w-]+",
-            r"youtube\.com/c/[\w-]+",
-            r"youtube\.com/user/[\w-]+",
-        ]
-        return any(re.search(p, url) for p in patterns)
-
-    def _extract_channel_id(self, url: str) -> str:
-        """Extract channel ID from URL (for archive naming). Returns None if not found."""
-        # Try to match /channel/ID
-        match = re.search(r"youtube\.com/channel/([\w-]+)", url)
-        if match:
-            return match.group(1)
-        # For @handle or /c/name we cannot get a stable ID without an API call.
-        # Fallback to a hash of the handle.
-        match = re.search(r"youtube\.com/@([\w-]+)", url)
-        if match:
-            return f"@{match.group(1)}"
-        return None
-
-    def _get_channel_videos(self, channel_url: str, limit: int = 0) -> list:
-        """
-        Use yt-dlp to extract video entries from a channel.
-        Returns a list of dicts with 'id' and optionally 'title'.
-        """
-        command = [
-            "yt-dlp",
-            "--flat-playlist",
-            "--dump-json",
-            "--ignore-errors",
-            "--quiet",
-            "--no-warnings",
-            channel_url
-        ]
-        if limit > 0:
-            command.insert(2, f"--playlist-end={limit}")
-
-        try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                timeout=60
-            )
-            if result.returncode != 0:
-                self.log_manager.log_error(f"yt-dlp channel extraction failed: {result.stderr[:200]}")
-                return []
-
-            items = []
-            for line in result.stdout.strip().split('\n'):
-                if not line.strip():
-                    continue
-                try:
-                    info = json.loads(line)
-                    # Only video entries have an 'id' (playlist items also appear)
-                    if info.get('_type') != 'playlist' and info.get('id'):
-                        items.append({
-                            'id': info['id'],
-                            'title': info.get('title', 'Unknown')
-                        })
-                except json.JSONDecodeError:
-                    continue
-            return items
-        except subprocess.TimeoutExpired:
-            self.log_manager.log_error("Channel video extraction timed out after 60 seconds.")
-            return []
-        except Exception as e:
-            self.log_manager.log_error(f"Unexpected error in _get_channel_videos: {e}")
-            return []
-
     # ==================== Public download methods ====================
     def download_track(self):
         """Download a single track"""
@@ -695,68 +675,6 @@ class YoutubeMusicDownloader:
 
         return failed_count == 0
 
-    def download_channel(self):
-        """Download all videos from an artist/channel using concurrent downloads."""
-        Enhanced_Menu.clear_screen()
-        Enhanced_Menu.print_header("Download Channel")
-
-        url = Enhanced_Menu.get_input("Enter YouTube channel/artist URL (or 'back' to return): ", "str")
-        if url.lower() == 'back':
-            return False
-        self.history.add_input(url, "channel")
-        # Validate URL (you can reuse existing validation)
-        if not Helpers.validate_youtube_url(url):
-            Enhanced_Menu.print_status("Invalid YouTube URL.", "error")
-            return False
-
-        is_valid, message, metadata = Helpers.validate_resource_youtube(url)
-        if not is_valid:
-            Enhanced_Menu.print_status(f"Validation failed: {message}", "failure")
-            return False
-
-        channel_name = metadata.get('channel') or metadata.get('uploader') or "Unknown Channel"
-        video_count = metadata.get('playlist_count', 0)
-        if video_count == 0:
-            Enhanced_Menu.print_status("No videos found in this channel.", "warning")
-            return False
-
-        Enhanced_Menu.print_status(f"Channel: {channel_name} ({video_count} videos)", "success")
-
-        if video_count > 50 and not Enhanced_Menu.get_input(
-            f"This channel has {video_count} videos. Continue? (y/n)", "yn", default=False
-        ):
-            return False
-
-        if Enhanced_Menu.get_input("Configure download settings? (y/n)", "yn", default=False):
-            self.get_user_preferences()
-
-        # Fetch video list
-        items = self._get_channel_videos(url)   # you'll need this helper (see below)
-        if not items:
-            Enhanced_Menu.print_status("Failed to retrieve channel videos.", "error")
-            return False
-
-        # Setup archive
-        channel_id = self._extract_channel_id(url) or hashlib.md5(url.encode()).hexdigest()[:8]
-        archive_path = self.archives_dir / f"channel_{channel_id}.txt"
-
-        safe_name = Helpers.sanitize_filename(channel_name)
-        channel_folder = self.__output_directory / safe_name
-        channel_folder.mkdir(parents=True, exist_ok=True)
-        output_template = str(channel_folder / "%(title)s.%(ext)s")
-
-        # Build tasks for concurrent download
-        tasks = []
-        for video in items:
-            video_url = f"https://music.youtube.com/watch?v={video['id']}"
-            additional_args = ["--download-archive", str(archive_path)]
-            tasks.append((video_url, output_template, additional_args, archive_path, video['id']))
-
-        results = self._download_items_concurrently(tasks, max_workers=3, desc="Channel Download")
-        success = sum(results.values())
-        print(f"\nDownloaded {success} of {len(tasks)} videos.")
-        return success == len(tasks)
-
     def search_and_download(self):
         """Search for a song and download it"""
         Enhanced_Menu.print_header("SEARCH & DOWNLOAD")
@@ -789,17 +707,19 @@ class YoutubeMusicDownloader:
                     return False
         return False
 
-    # ==================== Checkers & Helpers ====================
     def manage_cookies(self):
-        """Calls the cookie management menu"""
-        self.cookie_manager.interactive_menu()
-        if self.cookie_manager.current_cookie_file:
-            use_cookies = Enhanced_Menu.get_input("Enable cookies for future downloads? (y/n)", "yn", default=False)
-            if use_cookies:
-                self.use_cookies = True
+            """Calls the cookie management menu"""
+            self.cookie_manager.interactive_menu()
+            if COOKIE_FILE.exists():
+                use_cookies = Enhanced_Menu.get_input(
+                    "Enable cookies for future downloads? (y/n)", "yn", default=False
+                )
+                self.use_cookies = bool(use_cookies)
+                self.save_config()
             else:
-                self.use_cookies = False
-            self.save_config()
+                Enhanced_Menu.print_status(
+                    f"No cookie file found at {COOKIE_FILE}. Export cookies first.", "warning"
+                )
 
     def check_ytdlp(self):
         return self.utils.check_ytdlp()
@@ -857,11 +777,15 @@ class YoutubeMusicDownloader:
 
     def reset_to_defaults(self):
         """Reset all settings to default values"""
-        self.__output_directory = Path.home() / "Music" / "YouTubeMusicDownloads"
+        self.__output_directory = Path.home() / "Music" / "YouTube"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.use_cookies = False
-        self.__embed_metadata = False
+        self.max_retries = 3
+        self.retry_delay = 10
+        self.download_timeout = 120
+        self.max_concurrent = 2
+        self.yt_dlp_sleep_min = 3
+        self.yt_dlp_sleep_max = 7
         self.save_config()
         Enhanced_Menu.print_status("Settings reset to defaults", "success")
-

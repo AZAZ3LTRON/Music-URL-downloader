@@ -3,20 +3,19 @@ import re
 import spotipy
 from dotenv import load_dotenv
 load_dotenv()
+from ytmusicapi import YTMusic
 from spotipy.oauth2 import SpotifyClientCredentials
 from spotdl.utils.spotify import SpotifyClient
-
 from spotdl.types.playlist import Playlist
-
 import json
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import urllib.parse
 
-
 class Helpers:
     """ A Class for all static methods used by the program"""
+    
     # ========================================= Youtube Functions =========================================
     @staticmethod
     def validate_youtube_url(url: str) -> bool:
@@ -62,26 +61,86 @@ class Helpers:
         return None
 
     @staticmethod
-    def get_youtube_playlist_items(url: str, log_manager) -> List[Dict]:
-        """Fetch all video entries from a playlist"""
-        command = ["yt-dlp", "--flat-playlist", "--dump-json", "--no-warnings", url]
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
-            if result.returncode != 0:
-                log_manager.log_error(f"Failed to fetch playlist items: {result.stderr}")
-                return []
-            items = []
-            for line in result.stdout.strip().split('\n'):
-                if line:
-                    try:
-                        items.append(json.loads(line))
-                    except json.JSONDecodeError:
+    def get_youtube_playlist_items(url: str, log_manager, cookie_file: str = None) -> List[Dict]:
+        """Fetch ALL playlist entries.
+
+        Primary path uses ytmusicapi (YouTube Music's own API), which paginates
+        reliably past yt-dlp's ~100-200 flat-playlist ceiling. Falls back to
+        yt-dlp flat extraction if ytmusicapi is unavailable or errors.
+        """
+        playlist_id = Helpers.extract_youtube_playlist_id(url)
+
+        if playlist_id:
+            try:
+
+                yt = YTMusic()  # unauthenticated is fine for public playlists
+                data = yt.get_playlist(playlist_id, limit=None)  # None = fetch everything
+                tracks = data.get("tracks", []) if data else []
+
+                items = []
+                for t in tracks:
+                    vid = t.get("videoId")
+                    if not vid:
                         continue
-            return items
+                    if t.get("isAvailable") is False:  # skip removed/region-blocked
+                        continue
+                    artists = t.get("artists") or []
+                    artist = artists[0].get("name") if artists else None
+                    items.append({
+                        "id": vid,
+                        "title": t.get("title"),
+                        "artist": artist,
+                    })
+
+                if items:
+                    log_manager.log_success(
+                        f"ytmusicapi retrieved {len(items)} tracks "
+                        f"(reported total: {data.get('trackCount', '?')})"
+                    )
+                    return items
+
+                log_manager.log_warning("ytmusicapi returned no tracks; falling back to yt-dlp")
+            except ImportError:
+                log_manager.log_warning(
+                    "ytmusicapi not installed (pip install ytmusicapi); "
+                    "falling back to yt-dlp (large playlists will be truncated)"
+                )
+            except Exception as e:
+                log_manager.log_error(f"ytmusicapi failed ({e}); falling back to yt-dlp")
+
+        # ---- Fallback: yt-dlp flat extraction (may truncate large playlists) ----
+        command = [
+            "yt-dlp", "--flat-playlist", "--dump-json", "--ignore-errors",
+            "--extractor-retries", "15",
+            "--extractor-args", "youtubetab:skip=webpage",
+        ]
+        if cookie_file:
+            command += ["--cookies", cookie_file]
+        command.append(url)
+        try:
+            result = subprocess.run(command, capture_output=True, text=True,
+                                    timeout=600, check=False)
+        except subprocess.TimeoutExpired as e:
+            log_manager.log_warning("Playlist fetch timed out; using partial results")
+            result = None
+            raw = e.stdout or ""
         except Exception as e:
             log_manager.log_error(f"Error fetching playlist items: {e}")
             return []
+        else:
+            raw = result.stdout or ""
 
+        items = []
+        for line in raw.strip().split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                items.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return items
+    
     @staticmethod
     def validate_resource_youtube(url: str, timeout=30) -> Tuple[bool, str, Optional[Dict]]:
         """Validate YouTube URL and return metadata."""
