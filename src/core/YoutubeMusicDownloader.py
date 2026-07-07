@@ -571,11 +571,10 @@ class YoutubeMusicDownloader:
                         archive_path = self.archives_dir / f"playlist_{url_hash}.txt"
 
                     # Prepare output folder
-                    safe_title = Helpers.sanitize_filename(playlist_title)
-                    playlist_folder = self.__output_directory / safe_title
+                    playlist_folder = self.__output_directory / "Metal"
                     playlist_folder.mkdir(parents=True, exist_ok=True)
                     collection_template = str(playlist_folder / "%(artist)s - %(title)s.%(ext)s")
-
+                    
                     # Build tasks
                     tasks = []
                     for item in items:
