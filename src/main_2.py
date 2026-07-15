@@ -24,7 +24,7 @@ def main():
     print(f"{Fore.YELLOW}{Style.BRIGHT}Spotify Music Downloader{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}Initializing...{Style.RESET_ALL}")
 
-    music_dir = Path.home() / "Music" / "Spotify"
+    music_dir = Path.home() / "Music" / "Collection" / "Spotify"
     cookies_dir = Path("cookies") 
 
     # Ensure they exist

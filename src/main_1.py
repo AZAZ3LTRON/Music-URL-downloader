@@ -25,8 +25,7 @@ def main():
     print(f"{Fore.YELLOW}{Style.BRIGHT}Initializing...{Style.RESET_ALL}")
 
     # Define directories using pathlib
-    home = Path.home()
-    music_dir = home / "Music"
+    music_dir = Path.home() / "Music" / "Collection" / "YouTube"
     cookies_dir = Path("cookies")
 
     # Ensure they exist

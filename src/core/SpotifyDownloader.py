@@ -47,7 +47,7 @@ class SpotifyMusicDownloader:
 
     def __init__(self):
         """Initialize the downloader with default values"""
-        self.__output_directory = Path.home() / "Music" / "Spotify"
+        self.__output_directory = Path.home() / "Music" / "Collection" / "Spotify"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.__configuration_file = r"config/SpotifyMusicDownloader.json"
@@ -123,7 +123,7 @@ class SpotifyMusicDownloader:
     def load_config(self):
         """Load configuration from json file"""
         primary_config = {
-            "output_directory": str(Path.home() / "Music" / "Spotify"),
+            "output_directory": str(Path.home() / "Music" / "Collection" / "Spotify"),
             "audio_quality": "320k",
             "audio_format": "mp3",
             "max_retries": 3,
@@ -245,7 +245,7 @@ class SpotifyMusicDownloader:
             if output_path:
                 self.__output_directory = Path(output_path)
             else:
-                self.__output_directory = Path.home() / "Music" / "Spotify"
+                self.__output_directory = Path.home() / "Music" / "Collection" / "Spotify"
             self.__output_directory.mkdir(parents=True, exist_ok=True)
 
             # Cookie choice
@@ -921,7 +921,7 @@ class SpotifyMusicDownloader:
 
     def reset_to_defaults(self):
         """Reset all settings to default values"""
-        self.__output_directory = Path.home() / "Music" / "Spotify"
+        self.__output_directory = Path.home() / "Music" / "Collection" / "Spotify"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.use_cookies = False
