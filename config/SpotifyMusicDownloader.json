@@ -1,10 +1,12 @@
 {
-  "output_directory": "C:\\Users\\Ayomide Ajimuda\\Music\\Spotify",
+  "output_directory": "C:\\Users\\Ayomide\\Music\\Collection\\Spotify",
   "audio_quality": "320k",
   "audio_format": "mp3",
   "max_retries": 3,
   "retry_delay": 10,
   "download_timeout": 120,
   "max_concurrent": 3,
-  "use_cookies": false
+  "use_cookies": false,
+  "yt_dlp_sleep_min": 3,
+  "yt_dlp_sleep_max": 7
 }
