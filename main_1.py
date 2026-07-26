@@ -4,8 +4,8 @@ import time
 from pathlib import Path
 from colorama import init, Fore, Style
 
-from utils.EnhancedMenu import Enhanced_Menu
-from core.YoutubeMusicDownloader import YoutubeMusicDownloader
+from utils.enhancedmenu import Enhanced_Menu
+from downloader.YoutubeMusicDownloader import YoutubeMusicDownloader
 
 init(autoreset=True)
 

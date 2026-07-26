@@ -10,7 +10,7 @@ import os
 from colorama import init, Fore, Style
 import threading
 
-from .EnhancedMenu import Enhanced_Menu
+from .enhancedmenu import Enhanced_Menu
 
 init(autoreset=True)
 

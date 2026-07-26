@@ -15,10 +15,10 @@ from colorama import init, Fore, Style
 
 from utils.CookieManager import CookieManager
 from utils.DownloaderUtils import DownloaderUtils 
-from utils.EnhancedMenu import Enhanced_Menu
-from utils.Logs_Handler import Logs_Manager
+from utils.enhancedmenu import Enhanced_Menu
+from utils.logger import Logs_Manager
 from utils.DownloadHistory import DownloadHistory
-from utils.Helpers import Helpers 
+from utils.validators import Helpers 
 
 init(autoreset=True)
 os.makedirs("cookies", exist_ok=True)
@@ -68,7 +68,7 @@ class SpotifyMusicDownloader:
         self.yt_dlp_sleep_min = 3          # min seconds yt-dlp waits between downloads
         self.yt_dlp_sleep_max = 7          # max seconds (random delay in this range)
 
-        self.archives_dir = Path("archives")
+        self.archives_dir = Path("history/archives")
         self.archives_dir.mkdir(exist_ok=True)
         self.__output_directory.mkdir(parents=True, exist_ok=True)
         

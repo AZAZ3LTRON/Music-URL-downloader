@@ -16,9 +16,9 @@ from colorama import init, Fore, Style
 
 from utils.CookieManager import CookieManager
 from utils.DownloaderUtils import DownloaderUtils 
-from utils.EnhancedMenu import Enhanced_Menu#  <-- new helpers module
-from utils.Logs_Handler import Logs_Manager
-from utils.Helpers import Helpers
+from utils.enhancedmenu import Enhanced_Menu#  <-- new helpers module
+from utils.logger import Logs_Manager
+from utils.validators import Helpers
 from utils.DownloadHistory import DownloadHistory
 
 init(autoreset=True)
@@ -48,7 +48,7 @@ class YoutubeMusicDownloader:
 
     """Downloader Class that handles the downloading process"""
     def __init__(self):
-        self.__output_directory = Path.home() / "Music" / "YouTube"
+        self.__output_directory = Path.home() / "Music" / "Collection" / "YouTube"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.__configuration_file = r"config/YoutubeMusicDownloader.json"
@@ -65,7 +65,7 @@ class YoutubeMusicDownloader:
         self.yt_dlp_sleep_min = 3          # min seconds yt-dlp waits between downloads
         self.yt_dlp_sleep_max = 7          # max seconds (random delay in this range)
         
-        self.archives_dir = Path("archives")
+        self.archives_dir = Path("history/archives")
         self.archives_dir.mkdir(exist_ok=True)
         self.__output_directory.mkdir(parents=True, exist_ok=True)
 
@@ -79,7 +79,7 @@ class YoutubeMusicDownloader:
     def load_config(self):
         """Load configuration from json file"""
         primary_config = {
-            "output_directory": str(Path.home() / "Music" / "YouTube"),
+            "output_directory": str(Path.home() / "Music" / "Collection" / "YouTube"),
             "audio_quality": "320k",
             "audio_format": "mp3",
             "max_retries": self.max_retries,
@@ -201,7 +201,7 @@ class YoutubeMusicDownloader:
             if output_path:
                 self.__output_directory = Path(output_path)
             else:
-                self.__output_directory = Path.home() / "Music" / "YouTube"
+                self.__output_directory = Path.home() / "Music" / "Collection" / "YouTube"
             self.__output_directory.mkdir(parents=True, exist_ok=True)
 
             # Cookie choice
@@ -571,11 +571,10 @@ class YoutubeMusicDownloader:
                         archive_path = self.archives_dir / f"playlist_{url_hash}.txt"
 
                     # Prepare output folder
-                    safe_title = Helpers.sanitize_filename(playlist_title)
-                    playlist_folder = self.__output_directory / safe_title
+                    playlist_folder = self.__output_directory / "Another"
                     playlist_folder.mkdir(parents=True, exist_ok=True)
                     collection_template = str(playlist_folder / "%(artist)s - %(title)s.%(ext)s")
-
+                    
                     # Build tasks
                     tasks = []
                     for item in items:
@@ -766,7 +765,7 @@ class YoutubeMusicDownloader:
 
     def reset_to_defaults(self):
         """Reset all settings to default values"""
-        self.__output_directory = Path.home() / "Music" / "YouTube"
+        self.__output_directory = Path.home() / "Music" / "Collection" / "YouTube"
         self.__audio_quality = "320k"
         self.__audio_format = "mp3"
         self.use_cookies = False

@@ -8,7 +8,7 @@ from colorama import init, Fore, Style
 
 init(autoreset=True)
 
-from .EnhancedMenu import Enhanced_Menu
+from .enhancedmenu import Enhanced_Menu
 
 class DownloaderUtils:    
     @staticmethod
