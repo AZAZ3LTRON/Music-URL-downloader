@@ -13,12 +13,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from colorama import init, Fore, Style
 
-from utils.CookieManager import CookieManager
-from utils.DownloaderUtils import DownloaderUtils 
-from utils.enhancedmenu import Enhanced_Menu
-from utils.logger import Logs_Manager
-from utils.DownloadHistory import DownloadHistory
-from utils.validators import Helpers 
+from tools.CookieManager import CookieManager
+from tools.loaders import DownloaderUtils 
+from tools.EnhancedMenu import Enhanced_Menu
+from tools.logger import Logs_Manager
+from tools.historylogger import DownloadHistory
+from tools.validators import Helpers 
 
 init(autoreset=True)
 os.makedirs("cookies", exist_ok=True)

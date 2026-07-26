@@ -62,7 +62,7 @@ class DownloadHistory:
         return {"total": len(entries), "by_type": by_type}
 
     def interactive_menu(self):
-        from utils.enhancedmenu import Enhanced_Menu
+        from tools.EnhancedMenu import Enhanced_Menu
         while True:
             Enhanced_Menu.clear_screen()
             Enhanced_Menu.print_header("INPUT HISTORY", "All URLs / queries entered")
