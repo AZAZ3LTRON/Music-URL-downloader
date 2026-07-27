@@ -8,7 +8,7 @@ from colorama import Fore, Style
 class DownloadHistory:
     """Records only user‑supplied URLs / search queries (no status)."""
 
-    def __init__(self, history_file: Path = Path("logs/download_history.log")):
+    def __init__(self, history_file: Path = Path("history/download_history.log")):
         self.history_file = Path(history_file)
         self.history_file.parent.mkdir(parents=True, exist_ok=True)
         if not self.history_file.exists():

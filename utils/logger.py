@@ -10,7 +10,7 @@ import os
 from colorama import init, Fore, Style
 import threading
 
-from .enhancedmenu import Enhanced_Menu
+from tools.EnhancedMenu import Enhanced_Menu
 
 init(autoreset=True)
 
@@ -24,12 +24,14 @@ class Logs_Manager:
         self.success_log_path = self.log_dir / "success.log" # Directory for successful downloads
         self.failed_log_path = self.log_dir / "failed.log"  # Directory for failed downloads
         self.error_log_path = self.log_dir / "error.log" # Directory for errors during downloads
+        self.warning_log_path = self.log_dir / "warning" # Directory for warnings
         self._lock = threading.Lock() # Locks the thread
         
         # Initialize loggers
         self.success_logger = None
         self.failed_logger = None
         self.error_logger = None
+        self.warning_logger = None
         self.console_logger = None
         
         self._session_failed_urls = set()
@@ -122,6 +124,9 @@ class Logs_Manager:
                 self.error_logger.error(message, exc_info=exc_info)
             if console and self.console_logger:
                 self.console_logger.info(f"{self.color_map['error']}{message}{Style.RESET_ALL}")
+    
+    def log_warning(self, message: str, console: bool = True):
+        pass
     
     # ================= Advanced Failure log =====================
     def reset_session_failures(self):

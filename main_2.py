@@ -5,7 +5,7 @@ load_dotenv()
 from pathlib import Path
 from colorama import init, Fore, Style
 
-from utils.enhancedmenu import Enhanced_Menu
+from tools.EnhancedMenu import Enhanced_Menu
 
 from downloader.SpotifyDownloader import SpotifyMusicDownloader
 init(autoreset=True)
