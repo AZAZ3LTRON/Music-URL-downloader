@@ -101,7 +101,8 @@ class SpotifyMusicDownloader:
         # queue is kept separate from the YouTube downloader's - a Spotify link
         # is no use to yt-dlp, and vice versa.
         self.file_helpers = DownloadHelpers(on_error=self.log_manager.log_error)
-        self.batch_file = BatchFile(on_error=self.log_manager.log_error)
+        self.batch_file = BatchFile(on_error=self.log_manager.log_error,
+                                    backup_dir="history/backups")
         self.retry_queue = RetryQueue("history/retry_queue_spotify.json",
                                       on_error=self.log_manager.log_error)
 
@@ -439,6 +440,14 @@ class SpotifyMusicDownloader:
             }
 
             if process.returncode == 0:
+                # "Nothing succeeded, nothing was already on disk, and at least
+                # one track failed" is a failure whatever spotdl exited with.
+                # A part-failed album still counts as success - the caller has
+                # the stats and prints its own summary.
+                if failed and not succeeded and not skipped:
+                    self.log_manager.log_failure(
+                        f"spotdl exited 0 but no track downloaded for {url}")
+                    return False
                 return True
 
             error_keywords = ['error', 'fail', 'blocked', 'unavailable', 'private',
@@ -783,7 +792,6 @@ class SpotifyMusicDownloader:
         interrupted = throttled_out = False
         rate_limit_streak = 0
         started = time.monotonic()
-        flush_every = 5
 
         Enhanced_Menu.print_status(f"Starting batch download of {total} links...", "info")
         print()
@@ -817,10 +825,11 @@ class SpotifyMusicDownloader:
                         rate_limit_streak = 0
                         print(f"      {Fore.RED}failed -> retry queue{Style.RESET_ALL}")
 
-                # Flush periodically so a crash costs at most a few entries.
-                if index % flush_every == 0:
-                    if self.batch_file.mark_statuses(path, pending):
-                        pending = {}
+                # Written per link rather than in batches: the file should say
+                # what the screen just said, and an interrupted run shouldn't
+                # lose the last few results.
+                if self.batch_file.mark_statuses(path, pending):
+                    pending = {}
 
                 # Once throttling starts, every remaining link will fail the
                 # same way and burn its retries doing it. Stop and let the file

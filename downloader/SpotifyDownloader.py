@@ -9,7 +9,6 @@ import json
 from functools import wraps
 from pathlib import Path
 from typing import Dict, List
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from colorama import init, Fore, Style
 
@@ -43,8 +42,6 @@ def rate_limit(calls_per_minute: int = 60):
     return decorator
 
 class SpotifyMusicDownloader:
-    _PERCENT_RE = re.compile(r'(\d{1,3}(?:\.\d+)?)\s*%')
-
     def __init__(self):
         """Initialize the downloader with default values"""
         self.__output_directory = Path.home() / "Music" / "Collection" / "Spotify"
@@ -61,7 +58,6 @@ class SpotifyMusicDownloader:
 
         self.max_retries = 3
         self.retry_delay = 10
-        self.download_timeout = 120
         self.max_concurrent = 2
         self.rate_limit_backoff = 300     # base wait (s) after a YouTube rate limit
         self.rate_limit_max_wait = 1800 
@@ -69,7 +65,7 @@ class SpotifyMusicDownloader:
         self.yt_dlp_sleep_max = 7          # max seconds (random delay in this range)
 
         self.archives_dir = Path("history/archives")
-        self.archives_dir.mkdir(exist_ok=True)
+        self.archives_dir.mkdir(exist_ok=True, parents=True)
         self.__output_directory.mkdir(parents=True, exist_ok=True)
         
     # Ensure config directory exists
@@ -128,7 +124,6 @@ class SpotifyMusicDownloader:
             "audio_format": "mp3",
             "max_retries": 3,
             "retry_delay": 10,
-            "download_timeout": 120,
             "use_cookies": False,
             "max_concurrent": 2,
             "yt_dlp_sleep_min": 3,
@@ -151,7 +146,6 @@ class SpotifyMusicDownloader:
             # Update retry/delay settings
             self.max_retries = config.get("max_retries", 3)
             self.retry_delay = config.get("retry_delay", 10)
-            self.download_timeout = config.get("download_timeout", 120)
             self.max_concurrent = config.get("max_concurrent", 2)
             
             self.yt_dlp_sleep_min = config.get("yt_dlp_sleep_min", 3)
@@ -175,7 +169,6 @@ class SpotifyMusicDownloader:
                     "audio_format": self.__audio_format,
                     "max_retries": self.max_retries,
                     "retry_delay": self.retry_delay,
-                    "download_timeout": self.download_timeout,
                     "max_concurrent": self.max_concurrent,
                     "use_cookies": self.use_cookies,
                     "yt_dlp_sleep_min": self.yt_dlp_sleep_min,
@@ -552,7 +545,7 @@ class SpotifyMusicDownloader:
                         f"album_{album_id.group(1)}.spotdl" if album_id
                         else f"album_{url_hash}.spotdl"
                     )
-                if 'playlist' in url:
+                elif 'playlist' in url:
                     playlist_id = re.search(r'playlist/([a-zA-Z0-9]+)', url)
                     archive_path = self.archives_dir / (
                         f"playlist_{playlist_id.group(1)}.spotdl" if playlist_id else f"playlist_{url_hash}.spotdl"

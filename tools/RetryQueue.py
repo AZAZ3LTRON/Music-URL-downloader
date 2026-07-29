@@ -65,8 +65,17 @@ class RetryQueue:
             self._on_error(f"Could not write retry queue: {e}")
 
     # ---------------- Mutations ----------------
-    def add_failure(self, url: str, title: str, error: str, source: str) -> None:
-        """Add or update one failed link. Attempts accumulate across runs."""
+    def add_failure(self, url: str, title: str, error: str, source: str,
+                    throttled: bool = False, item_type: str = "track") -> None:
+        """
+        Add or update one failed link. Attempts accumulate across runs.
+
+        `throttled` records that the host was refusing traffic rather than the
+        link being bad - the two are worth telling apart, since a throttled
+        link will very likely work later while a dead one never will. It is
+        counted separately so a link isn't written off after three attempts
+        that were never really about it.
+        """
         now = datetime.datetime.now().isoformat(timespec="seconds")
         with self._lock:
             queue = self.read()
@@ -74,16 +83,26 @@ class RetryQueue:
                 "url": url,
                 "title": title,
                 "source": source,
+                "item_type": item_type,
                 "attempts": 0,
+                "throttled_attempts": 0,
                 "first_failed": now,
             })
             entry["title"] = title or entry.get("title", "")
-            entry["source"] = source
+            entry["source"] = source or entry.get("source", "")
+            entry["item_type"] = item_type or entry.get("item_type", "track")
             entry["attempts"] = int(entry.get("attempts", 0)) + 1
+            if throttled:
+                entry["throttled_attempts"] = int(entry.get("throttled_attempts", 0)) + 1
+            entry["throttled"] = bool(throttled)
             entry["last_failed"] = now
             entry["last_error"] = (error or "")[:300]
             queue[url] = entry
             self._write(queue)
+
+    def throttled_count(self) -> int:
+        """How many queued links last failed because of throttling."""
+        return sum(1 for e in self.read().values() if e.get("throttled"))
 
     def clear(self, urls: Iterable[str]) -> None:
         """Drop links that have since succeeded."""

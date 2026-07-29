@@ -6,17 +6,21 @@ where the URL column is. Splitting them across modules is how they drift apart.
 """
 
 import csv
-import datetime
+import hashlib
 import os
 import re
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-# Used to pull a link out of an arbitrary line of a .txt/.csv file.
-URL_IN_TEXT = re.compile(r"https?://\S+")
+# Used to pull a link out of an arbitrary line of a .txt/.csv file. Spotify
+# URIs (spotify:track:...) are matched too, so the same parser serves both
+# downloaders - a Spotify list is as likely to hold URIs as https links.
+URL_IN_TEXT = re.compile(r"(?:https?://|spotify:)\S+")
 
 # Trailing marker appended to a .txt line once its link has been handled:
-#   https://... - Artist - Song   # status=success @ 2026-07-29T14:02:11
+#   https://... - Artist - Song   # status=success
+# The "@ <timestamp>" form written by earlier versions is still accepted on
+# read, so existing files keep working.
 STATUS_TAG = re.compile(r"\s*#\s*status\s*=\s*(\w+)(?:\s*@[^#]*)?\s*$", re.IGNORECASE)
 
 # Column names recognised when reading/writing a link .csv.
@@ -29,8 +33,16 @@ KNOWN_STATUSES = {"success", "failed", "pending", "skipped", ""}
 class BatchFile:
     """Parse a link file, and record each link's outcome back into it."""
 
-    def __init__(self, on_error: Optional[Callable[[str], None]] = None):
+    def __init__(self, on_error: Optional[Callable[[str], None]] = None,
+                 backup_dir=None):
+        """
+        backup_dir: where to keep a one-off copy of each file before it is first
+        written to. None disables backups entirely. Writes are atomic either
+        way (temp file + os.replace), so this only guards against a bug in the
+        marking logic, not against an interrupted write.
+        """
         self._on_error = on_error or (lambda message: None)
+        self.backup_dir = Path(backup_dir) if backup_dir else None
 
     # ---------------- Layout ----------------
     @staticmethod
@@ -158,6 +170,27 @@ class BatchFile:
         return entries
 
     # ---------------- Writing ----------------
+    def _backup_once(self, path: Path) -> None:
+        """Copy the file into backup_dir the first time it is written to.
+
+        The copy lives alongside the other bookkeeping rather than next to the
+        user's file, so a link list doesn't sprout a .bak sibling in whatever
+        folder they keep it in. A path hash is in the name so two files called
+        links.txt in different folders don't collide.
+        """
+        if self.backup_dir is None:
+            return
+        try:
+            digest = hashlib.md5(str(path.resolve()).encode()).hexdigest()[:8]
+            backup = self.backup_dir / f"{path.stem}_{digest}{path.suffix}.bak"
+            if not backup.exists():
+                self.backup_dir.mkdir(parents=True, exist_ok=True)
+                backup.write_bytes(path.read_bytes())
+        except OSError as e:
+            # A missing backup is not a reason to refuse to record progress.
+            self._on_error(f"Could not back up {path}: {e}")
+
+
     def mark_statuses(self, path: Path, statuses: Dict[str, str]) -> bool:
         """
         Record the outcome of each link back into the source file.
@@ -170,13 +203,10 @@ class BatchFile:
             return True
 
         path = Path(path)
-        stamp = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         tmp_path = path.with_name(path.name + ".tmp")
-        backup = path.with_name(path.name + ".bak")
 
         try:
-            if not backup.exists():
-                backup.write_bytes(path.read_bytes())
+            self._backup_once(path)
 
             if path.suffix.lower() in (".csv", ".tsv"):
                 with open(path, newline="", encoding="utf-8-sig") as f:
@@ -223,8 +253,14 @@ class BatchFile:
                     csv.writer(f, dialect).writerows(out_rows)
 
             else:
-                with open(path, encoding="utf-8-sig") as f:
-                    lines = f.read().splitlines()
+                # newline="" keeps the original endings visible instead of
+                # letting universal-newline mode hide them; a CRLF list edited
+                # on Windows shouldn't silently become LF because the run
+                # happened under WSL.
+                with open(path, encoding="utf-8-sig", newline="") as f:
+                    raw_text = f.read()
+                newline = "\r\n" if "\r\n" in raw_text else "\n"
+                lines = raw_text.splitlines()
 
                 out_lines = []
                 for raw in lines:
@@ -239,12 +275,12 @@ class BatchFile:
                     match = URL_IN_TEXT.search(body)
                     url = match.group(0).rstrip(",;\"'") if match else None
                     if url and url in statuses:
-                        out_lines.append(f"{body}  # status={statuses[url]} @ {stamp}")
+                        out_lines.append(f"{body}  # status={statuses[url]}")
                     else:
                         out_lines.append(raw)
 
-                with open(tmp_path, "w", encoding="utf-8") as f:
-                    f.write("\n".join(out_lines) + "\n")
+                with open(tmp_path, "w", encoding="utf-8", newline="") as f:
+                    f.write(newline.join(out_lines) + newline)
 
             os.replace(tmp_path, path)
             return True
