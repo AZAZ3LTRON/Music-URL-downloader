@@ -1,0 +1,42 @@
+[
+  {
+    "url": "https://music.youtube.com/watch?v=R2hwScA6p_E",
+    "source_url": "https://music.youtube.com/playlist?list=PLWgmkMjDpArM",
+    "item_type": "video",
+    "reason": "failed_after_retries",
+    "added": "2026-07-28 13:27:36",
+    "attempts": 0
+  },
+  {
+    "url": "https://music.youtube.com/watch?v=DGIrTPL8vsc",
+    "source_url": "https://music.youtube.com/playlist?list=PLWgmkMjDpArM",
+    "item_type": "video",
+    "reason": "failed_after_retries",
+    "added": "2026-07-28 13:27:36",
+    "attempts": 0
+  },
+  {
+    "url": "https://music.youtube.com/watch?v=F3SHlUKWY68",
+    "source_url": "https://music.youtube.com/playlist?list=PLWgmkMjDpArM",
+    "item_type": "video",
+    "reason": "failed_after_retries",
+    "added": "2026-07-28 13:27:36",
+    "attempts": 0
+  },
+  {
+    "url": "https://music.youtube.com/watch?v=vCWiH2IGuCU",
+    "source_url": "https://music.youtube.com/playlist?list=PLWgmkMjDpArM",
+    "item_type": "video",
+    "reason": "failed_after_retries",
+    "added": "2026-07-28 13:27:36",
+    "attempts": 0
+  },
+  {
+    "url": "https://music.youtube.com/watch?v=_oWUgfpGi0M",
+    "source_url": "https://music.youtube.com/playlist?list=PLWgmkMjDpArM",
+    "item_type": "video",
+    "reason": "failed_after_retries",
+    "added": "2026-07-28 13:27:36",
+    "attempts": 0
+  }
+]

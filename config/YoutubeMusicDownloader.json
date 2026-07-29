@@ -2,11 +2,11 @@
   "output_directory": "C:\\Users\\Ayomide\\Music\\Collection\\YouTube",
   "audio_quality": "320k",
   "audio_format": "mp3",
+  "use_cookies": false,
   "max_retries": 3,
   "retry_delay": 10,
   "download_timeout": 120,
   "max_concurrent": 2,
-  "use_cookies": false,
   "yt_dlp_sleep_min": 3,
   "yt_dlp_sleep_max": 7
 }

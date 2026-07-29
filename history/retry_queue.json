@@ -1,0 +1,15 @@
+{
+  "updated": "2026-07-29T09:57:15",
+  "count": 1,
+  "items": [
+    {
+      "url": "https://music.youtube.com/watch?v=Cw8V1TQXcGc",
+      "title": "",
+      "source": "C:\\Users\\Ayomide\\Documents\\Projects\\music-url-downloader\\links\\Metal.txt",
+      "attempts": 1,
+      "first_failed": "2026-07-29T09:57:15",
+      "last_failed": "2026-07-29T09:57:15",
+      "last_error": "'YoutubeMusicDownloader' object has no attribute '_get_cookie_file'"
+    }
+  ]
+}
