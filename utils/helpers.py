@@ -1,16 +1,7 @@
-"""Small filesystem helpers shared by the downloaders.
-
-`safe_name` is pure and stateless, so it stays a static method. The archive
-readers touch the disk and therefore need somewhere to report a failure, which
-is what the `on_error` sink is for - the same pattern DownloaderConfigManager
-already uses, so nothing here has to import the logger directly.
-"""
-
 import re
 import threading
 from pathlib import Path
 from typing import Callable, Optional, Set
-
 
 class DownloadHelpers:
     """Filesystem-safe naming and yt-dlp download-archive bookkeeping."""

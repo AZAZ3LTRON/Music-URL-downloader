@@ -15,19 +15,18 @@ from colorama import init, Fore, Style
 
 from tools.CookieManager import CookieManager
 from tools.ConfigManager import DownloaderConfigManager
-from tools.RateLimiter import youtube_limiter, looks_throttled
-from utils.loaders import DownloaderUtils
-from tools.EnhancedMenu import Enhanced_Menu
-from utils.logger import Logs_Manager
-from utils.validators import Helpers
-from utils.historylogger import DownloadHistory
-from utils.helpers import DownloadHelpers
 from tools.BatchFile import BatchFile
 from tools.RetryQueue import RetryQueue
+from tools.RateLimiter import youtube_limiter, looks_throttled
+from tools.EnhancedMenu import Enhanced_Menu
+from utils.utilities import DownloaderUtils
+from utils.logger import Logs_Manager
+from utils.validators import Helpers
+from utils.history_logger import DownloadHistory
+from utils.helpers import DownloadHelpers
 
 init(autoreset=True)
 os.makedirs("cookies", exist_ok=True)
-
 
 class _NullBar:
     """No-op stand-in for tqdm so worker threads don't render nested bars."""
@@ -45,7 +44,6 @@ class _NullBar:
 
     def close(self):
         pass
-
 
 class YoutubeMusicDownloader:
     """Downloader class that handles the downloading process."""

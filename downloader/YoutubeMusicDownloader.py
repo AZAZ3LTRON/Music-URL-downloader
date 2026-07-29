@@ -15,11 +15,11 @@ from tqdm import tqdm
 from colorama import init, Fore, Style
 
 from tools.CookieManager import CookieManager
-from utils.loaders import DownloaderUtils 
+from utils.utilities import DownloaderUtils 
 from tools.EnhancedMenu import Enhanced_Menu#  <-- new helpers module
 from utils.logger import Logs_Manager
 from utils.validators import Helpers
-from utils.historylogger import DownloadHistory
+from utils.history_logger import DownloadHistory
 
 init(autoreset=True)
 os.makedirs("cookies", exist_ok=True)

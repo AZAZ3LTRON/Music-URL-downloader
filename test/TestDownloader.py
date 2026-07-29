@@ -14,10 +14,10 @@ from tqdm import tqdm
 from colorama import init, Fore, Style
 
 from tools.CookieManager import CookieManager
-from utils.loaders import DownloaderUtils 
+from utils.utilities import DownloaderUtils 
 from tools.EnhancedMenu import Enhanced_Menu
 from utils.logger import Logs_Manager
-from utils.historylogger import DownloadHistory
+from utils.history_logger import DownloadHistory
 from utils.validators import Helpers
 from utils.helpers import DownloadHelpers
 from tools.BatchFile import BatchFile

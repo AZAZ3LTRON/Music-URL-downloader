@@ -3,7 +3,7 @@ import time
 from utils.logger import log_info, log_error
 from downloader.base_downloader import batch_download
 import asyncio
-from utils.loaders import load_primary_tracks
+from utils.utilities import load_primary_tracks
 
 
 def schedule_download(config):
