@@ -1,15 +1,7 @@
 {
-  "updated": "2026-07-29T11:00:34",
+  "updated": "2026-07-29T11:11:56",
   "count": 5,
   "items": [
-    {
-      "url": "https://music.youtube.com/watch?v=F3SHlUKWY68",
-      "source_url": "https://music.youtube.com/playlist?list=PLWgmkMjDpArM",
-      "item_type": "video",
-      "reason": "failed_after_retries",
-      "added": "2026-07-28 13:27:36",
-      "attempts": 0
-    },
     {
       "url": "https://music.youtube.com/watch?v=vCWiH2IGuCU",
       "source_url": "https://music.youtube.com/playlist?list=PLWgmkMjDpArM",
@@ -52,6 +44,20 @@
       "throttled_attempts": 1,
       "throttled": true,
       "last_failed": "2026-07-29T11:00:34",
+      "last_error": "Command '['yt-dlp', '-x', '-f', 'bestaudio/best', '--audio-format', 'mp3', '--audio-quality', '320k', '-o', 'C:\\\\Users\\\\Ayomide\\\\Music\\\\Collection\\\\YouTube\\\\Metal\\\\%(artist)s - %(title)s.%(ext)s', '--no-overwrites', '--add-metadata', '--embed-thumbnail', '--convert-thumbnails', 'jpg', '--ppa', 'Thum"
+    },
+    {
+      "url": "https://music.youtube.com/watch?v=F3SHlUKWY68",
+      "source_url": "https://music.youtube.com/playlist?list=PLWgmkMjDpArM",
+      "item_type": "track",
+      "reason": "failed_after_retries",
+      "added": "2026-07-28 13:27:36",
+      "attempts": 1,
+      "title": "",
+      "source": "C:\\Users\\Ayomide\\Documents\\Projects\\music-url-downloader\\links\\Metal.txt",
+      "throttled_attempts": 1,
+      "throttled": true,
+      "last_failed": "2026-07-29T11:11:56",
       "last_error": "Command '['yt-dlp', '-x', '-f', 'bestaudio/best', '--audio-format', 'mp3', '--audio-quality', '320k', '-o', 'C:\\\\Users\\\\Ayomide\\\\Music\\\\Collection\\\\YouTube\\\\Metal\\\\%(artist)s - %(title)s.%(ext)s', '--no-overwrites', '--add-metadata', '--embed-thumbnail', '--convert-thumbnails', 'jpg', '--ppa', 'Thum"
     }
   ]

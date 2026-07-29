@@ -250,7 +250,6 @@ class YoutubeMusicDownloader:
         self.save_config()
         Enhanced_Menu.print_status("Settings saved", "success")
 
-    # ==================== Helpers ====================
     def _get_cookie_file(self) -> Optional[str]:
         """Return a usable cookie-file path if cookies are enabled, else None."""
         if not self.use_cookies:
@@ -441,9 +440,11 @@ class YoutubeMusicDownloader:
 
             # A 403 on the media stream is YouTube refusing to serve us, which
             # looks identical to a per-video problem in the exit code alone.
-            if ("403" in low or "forbidden" in low
-                    or "429" in low or "too many requests" in low):
+            # Checked against the whole output, since a marker that never
+            # appeared on a streamed line would otherwise be missed here.
+            if not throttled and looks_throttled(full_output):
                 throttled = True
+                youtube_limiter.penalize(self.retry_delay * 6)
             self._last_run_throttled = throttled
 
             # yt-dlp can report an error and still exit 0 (that is what
@@ -656,6 +657,9 @@ class YoutubeMusicDownloader:
                     "Invalid YouTube URL. Enter a valid YouTube/YouTube Music URL", "error")
                 continue
 
+            # Metadata probes shell out to yt-dlp as well, so they belong
+            # under the same bucket as the downloads.
+            youtube_limiter.acquire()
             is_valid, message, metadata = Helpers.validate_resource_youtube(url)
             if not is_valid or not metadata:
                 Enhanced_Menu.print_status(f"Validation failed: {message}", "error")
@@ -743,6 +747,7 @@ class YoutubeMusicDownloader:
 
     def _run_playlist(self, url: str, metadata: Dict, max_workers: int) -> bool:
         """Expand a playlist and download its items in parallel."""
+        youtube_limiter.acquire()
         items = Helpers.get_youtube_playlist_items(url, self.log_manager)
         if not items:
             Enhanced_Menu.print_status("Failed to retrieve playlist items.", "error")
@@ -905,6 +910,12 @@ class YoutubeMusicDownloader:
         rate_limit_streak = 0
         started = time.monotonic()
 
+        cooling = youtube_limiter.cooldown_remaining
+        if cooling > 0:
+            Enhanced_Menu.print_status(
+                f"A throttling cooldown from an earlier run is still active - the first "
+                f"link will wait about {cooling:.0f}s.", "warning")
+
         Enhanced_Menu.print_status(f"Starting batch download of {total} links...", "info")
         print()
 
@@ -954,15 +965,22 @@ class YoutubeMusicDownloader:
 
                 if index < total:
                     if rate_limit_streak:
-                        wait = min(self.rate_limit_backoff * (2 ** (rate_limit_streak - 1)),
-                                   self.rate_limit_max_wait)
+                        # Hand the backoff to the limiter rather than sleeping
+                        # here: a local sleep only pauses this loop, while a
+                        # penalty is honoured by every caller of acquire(),
+                        # including playlist workers on another thread.
+                        penalty = min(self.rate_limit_backoff * (2 ** (rate_limit_streak - 1)),
+                                      self.rate_limit_max_wait)
+                        youtube_limiter.penalize(penalty)
                         Enhanced_Menu.print_status(
-                            f"Throttled - pausing {wait}s before the next link", "warning")
+                            f"Throttled - holding off {penalty:.0f}s before the next link",
+                            "warning")
+                        # The next acquire() inside run_download serves the
+                        # cooldown, so there is nothing to sleep on here.
                     else:
                         # yt-dlp's own --sleep-interval only applies within a
                         # single invocation, not between them.
-                        wait = random.uniform(self.yt_dlp_sleep_min, self.yt_dlp_sleep_max)
-                    time.sleep(wait)
+                        time.sleep(random.uniform(self.yt_dlp_sleep_min, self.yt_dlp_sleep_max))
 
         except KeyboardInterrupt:
             interrupted = True
@@ -991,6 +1009,9 @@ class YoutubeMusicDownloader:
         if stopped:
             print(f"  {Fore.YELLOW}Not attempted:{Style.RESET_ALL} {total - succeeded - failed}")
         print(f"  {Fore.CYAN}Statuses written to:{Style.RESET_ALL} {path}")
+        cooling = youtube_limiter.cooldown_remaining
+        if cooling > 0:
+            print(f"  {Fore.YELLOW}Throttle cooldown left:{Style.RESET_ALL} {cooling / 60:.1f} min")
         print(f"  {Fore.CYAN}Elapsed:{Style.RESET_ALL} {elapsed / 60:.1f} min")
 
         if succeeded:
@@ -1024,6 +1045,12 @@ class YoutubeMusicDownloader:
         if len(items) > 10:
             print(f"      ...and {len(items) - 10} more")
         print()
+
+        cooling = youtube_limiter.cooldown_remaining
+        if cooling > 0:
+            Enhanced_Menu.print_status(
+                f"A throttling cooldown is still active - the first link will wait "
+                f"about {cooling:.0f}s.", "warning")
 
         if not Enhanced_Menu.get_input(f"Retry these {len(items)} links? (y/n)",
                                        "yn", default=True):
@@ -1085,13 +1112,14 @@ class YoutubeMusicDownloader:
 
                 if index < total:
                     if rate_limit_streak:
-                        wait = min(self.rate_limit_backoff * (2 ** (rate_limit_streak - 1)),
-                                   self.rate_limit_max_wait)
+                        penalty = min(self.rate_limit_backoff * (2 ** (rate_limit_streak - 1)),
+                                      self.rate_limit_max_wait)
+                        youtube_limiter.penalize(penalty)
                         Enhanced_Menu.print_status(
-                            f"Throttled - pausing {wait}s before the next link", "warning")
+                            f"Throttled - holding off {penalty:.0f}s before the next link",
+                            "warning")
                     else:
-                        wait = random.uniform(self.yt_dlp_sleep_min, self.yt_dlp_sleep_max)
-                    time.sleep(wait)
+                        time.sleep(random.uniform(self.yt_dlp_sleep_min, self.yt_dlp_sleep_max))
         except KeyboardInterrupt:
             print()
             Enhanced_Menu.print_status("Interrupted - remaining links stay queued.", "warning")
@@ -1234,6 +1262,7 @@ class YoutubeMusicDownloader:
 
         Enhanced_Menu.print_status("\n3. Testing YouTube access...", "info")
         test_url = "https://music.youtube.com/watch?v=215T8NF93kw"
+        youtube_limiter.acquire()
         try:
             result = subprocess.run(
                 ["yt-dlp", "--skip-download", "--print-json", test_url],

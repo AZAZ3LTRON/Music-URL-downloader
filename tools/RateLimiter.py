@@ -94,3 +94,4 @@ def looks_throttled(text: str) -> bool:
 # its audio from YouTube too, so two independent streams would double the
 # request rate against the same host.
 youtube_limiter = RateLimiter(60, burst=4, name="youtube")
+spotify_limiter = RateLimiter(60, burst=4, name="spotify")
