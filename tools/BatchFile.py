@@ -23,9 +23,15 @@ URL_IN_TEXT = re.compile(r"(?:https?://|spotify:)\S+")
 # read, so existing files keep working.
 STATUS_TAG = re.compile(r"\s*#\s*status\s*=\s*(\w+)(?:\s*@[^#]*)?\s*$", re.IGNORECASE)
 
-# Column names recognised when reading/writing a link .csv.
+# Column names recognised when reading/writing a link .csv. Exact names are
+# tried first, then a looser keyword match, so real-world exports work without
+# an entry per tool: Exportify writes "Track URI" / "Track Name" /
+# "Artist Name(s)", none of which match a fixed list exactly.
 URL_HEADERS = ("url", "link", "uri", "address")
+URL_KEYWORDS = ("uri", "url", "link")
 TITLE_HEADERS = ("title", "name", "track", "song")
+TITLE_HEADERS_LOOSE = ("track name", "song name", "song title")
+ARTIST_HEADERS = ("artist", "artists", "artist name", "artist name(s)")
 STATUS_HEADERS = ("status", "state", "downloaded", "result")
 KNOWN_STATUSES = {"success", "failed", "pending", "skipped", ""}
 
@@ -46,19 +52,27 @@ class BatchFile:
 
     # ---------------- Layout ----------------
     @staticmethod
-    def csv_layout(rows: List[List[str]], has_header: bool) -> Tuple[int, Optional[int], Optional[int], int]:
-        """Work out (url_idx, title_idx, status_idx, first_data_row) for a CSV."""
-        url_idx, title_idx, status_idx, start = None, None, None, 0
+    def csv_layout(rows: List[List[str]], has_header: bool):
+        """Work out (url_idx, title_idx, artist_idx, status_idx, first_data_row)."""
+        url_idx = title_idx = artist_idx = status_idx = None
+        start = 0
 
         if has_header:
             header = [str(h).strip().lower() for h in rows[0]]
             for i, name in enumerate(header):
-                if name in URL_HEADERS:
+                if url_idx is None and (name in URL_HEADERS
+                                        or any(k in name for k in URL_KEYWORDS)):
                     url_idx = i
-                elif name in TITLE_HEADERS:
-                    title_idx = i
-                elif name in STATUS_HEADERS:
+                elif status_idx is None and name in STATUS_HEADERS:
                     status_idx = i
+                elif artist_idx is None and "artist" in name and "album" not in name:
+                    # "Album Artist Name(s)" is not the performer we want to show.
+                    artist_idx = i
+                elif title_idx is None and (name in TITLE_HEADERS
+                                            or name in TITLE_HEADERS_LOOSE
+                                            or ("name" in name and "album" not in name
+                                                and "artist" not in name)):
+                    title_idx = i
             start = 1
 
         if url_idx is None:
@@ -80,7 +94,7 @@ class BatchFile:
                 if values and all(v in KNOWN_STATUSES for v in values):
                     status_idx = last
 
-        return url_idx, title_idx, status_idx, start
+        return url_idx, title_idx, artist_idx, status_idx, start
 
     # ---------------- Reading ----------------
     def parse(self, path: Path) -> List[Dict[str, str]]:
@@ -120,7 +134,8 @@ class BatchFile:
                 if not rows:
                     return []
 
-                url_idx, title_idx, status_idx, start = self.csv_layout(rows, has_header)
+                url_idx, title_idx, artist_idx, status_idx, start = self.csv_layout(
+                    rows, has_header)
 
                 for row in rows[start:]:
                     cell = row[url_idx] if url_idx < len(row) else ""
@@ -131,6 +146,9 @@ class BatchFile:
 
                     title = ""
                     if title_idx is not None and title_idx < len(row):
+                        # The plain track name. The artist is returned as its
+                        # own field rather than folded in here, or a caller
+                        # that combines the two ends up with it twice.
                         title = str(row[title_idx]).strip()
                     elif len(row) > 1:
                         # No header to go on: use the first cell that isn't the
@@ -139,12 +157,17 @@ class BatchFile:
                                       if c and not URL_IN_TEXT.search(str(c))
                                       and str(c).strip().lower() not in KNOWN_STATUSES), "")
 
+                    artist = ""
+                    if artist_idx is not None and artist_idx < len(row):
+                        artist = str(row[artist_idx]).strip()
+
                     status = ""
                     if status_idx is not None and status_idx < len(row):
                         status = str(row[status_idx]).strip().lower()
 
                     entries.append({"url": match.group(0).rstrip(",;\"'"),
-                                    "title": title, "status": status})
+                                    "title": title, "artist": artist,
+                                    "status": status})
             else:
                 with open(path, encoding="utf-8-sig") as f:
                     for line in f:
@@ -163,7 +186,8 @@ class BatchFile:
                             continue
                         url = match.group(0).rstrip(",;\"'")
                         title = line.replace(match.group(0), "").strip(" ,|-\t")
-                        entries.append({"url": url, "title": title, "status": status})
+                        entries.append({"url": url, "title": title,
+                                        "artist": "", "status": status})
         except OSError as e:
             self._on_error(f"Could not read {path}: {e}")
             return []
@@ -225,8 +249,16 @@ class BatchFile:
                 if not rows:
                     return True
 
-                url_idx, _, status_idx, start = self.csv_layout(rows, has_header)
+                url_idx, _, _, status_idx, start = self.csv_layout(rows, has_header)
                 width = max(len(r) for r in rows)
+
+                # A sniffed dialect describes how to *read* the file and can come
+                # back with quoting disabled, which makes the writer refuse any
+                # cell containing the delimiter ("metalcore,metal,heavy metal").
+                # Keep only the delimiter and write with standard quoting.
+                with open(path, "rb") as raw:
+                    head = raw.read(8192)
+                terminator = "\r\n" if b"\r\n" in head else "\n"
 
                 if status_idx is None:
                     status_idx = width
@@ -250,7 +282,11 @@ class BatchFile:
                     out_rows.append(row)
 
                 with open(tmp_path, "w", newline="", encoding="utf-8") as f:
-                    csv.writer(f, dialect).writerows(out_rows)
+                    csv.writer(f,
+                               delimiter=getattr(dialect, "delimiter", ","),
+                               quotechar='"',
+                               quoting=csv.QUOTE_MINIMAL,
+                               lineterminator=terminator).writerows(out_rows)
 
             else:
                 # newline="" keeps the original endings visible instead of

@@ -33,6 +33,9 @@ SPOTIFY_LINK = re.compile(
     r"^(?:https?://(?:open|play)\.spotify\.com/\S+|spotify:[a-z]+:[A-Za-z0-9]+)$",
     re.IGNORECASE)
 
+# Exportify and the Spotify desktop app both hand out URIs rather than links.
+SPOTIFY_URI = re.compile(r"^spotify:([a-z]+):([A-Za-z0-9]+)$", re.IGNORECASE)
+
 
 class _NullBar:
     """No-op stand-in for tqdm, for batch links that print their own status."""
@@ -684,6 +687,27 @@ class SpotifyMusicDownloader:
         """Shape check only - the download itself is the real validation."""
         return bool(SPOTIFY_LINK.match((url or "").strip()))
 
+    @staticmethod
+    def _to_spotify_url(value: str) -> str:
+        """
+        Turn a spotify:track:<id> URI into https://open.spotify.com/track/<id>.
+
+        Exportify writes URIs, and converting removes any dependence on how
+        spotdl chooses to parse that form. The mapping is exact - same type,
+        same ID - so nothing is guessed.
+
+        Only the value handed to spotdl is converted. The link is recorded and
+        matched in the source file exactly as written there, or the status
+        marker would never find its line again.
+
+        Anything that isn't a URI is returned unchanged.
+        """
+        match = SPOTIFY_URI.match((value or "").strip())
+        if not match:
+            return (value or "").strip()
+        kind, spotify_id = match.group(1).lower(), match.group(2)
+        return f"https://open.spotify.com/{kind}/{spotify_id}"
+
     def _last_error_summary(self) -> str:
         """Turn the last run's stats into one line worth storing in the queue."""
         stats = self._last_download_stats or {}
@@ -802,8 +826,10 @@ class SpotifyMusicDownloader:
                 label = title or url
                 print(f"{Fore.CYAN}[{index}/{total}]{Style.RESET_ALL} {str(label)[:65]}")
 
+                # Download the canonical URL, but keep `url` as the file wrote
+                # it so the status marker lands on the right line.
                 ok = self._download_with_retry(
-                    url, output_template, item_type="track",
+                    self._to_spotify_url(url), output_template, item_type="track",
                     total_items=1, desc=str(label)[:40], show_progress=False)
 
                 if ok:
@@ -816,8 +842,10 @@ class SpotifyMusicDownloader:
                     failed += 1
                     error = self._last_error_summary()
                     pending[url] = "failed"
-                    failures.append((url, title, error))
-                    self.retry_queue.add_failure(url, title, error, str(path))
+                    failures.append((url, label, error))
+                    self.retry_queue.add_failure(url, label, error, str(path),
+                                                 throttled=bool(
+                                                     self._last_download_stats.get("rate_limited")))
                     if self._last_download_stats.get("rate_limited"):
                         rate_limit_streak += 1
                         print(f"      {Fore.RED}rate limited -> retry queue{Style.RESET_ALL}")
@@ -928,7 +956,7 @@ class SpotifyMusicDownloader:
                 print(f"{Fore.CYAN}[{index}/{total}]{Style.RESET_ALL} {str(label)[:65]}")
 
                 ok = self._download_with_retry(
-                    url, output_template, item_type="track",
+                    self._to_spotify_url(url), output_template, item_type="track",
                     total_items=1, desc=str(label)[:40], show_progress=False)
 
                 source = entry.get("source")
